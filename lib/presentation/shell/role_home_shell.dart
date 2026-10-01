@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../application/session_controller.dart';
+import '../../core/app/app_metadata.dart';
 import '../../core/theme/timefit_theme.dart';
 import '../../domain/app_session.dart';
 
@@ -40,6 +41,8 @@ class _RoleHomeShellState extends State<RoleHomeShell> {
     return Scaffold(
       body: index == 0
           ? _RoleHome(controller: widget.controller, organization: organization)
+          : index == 4
+          ? _MorePage(controller: widget.controller)
           : _PlaceholderPage(title: labels[index]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
@@ -76,9 +79,33 @@ class _RoleHome extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      organization.organizationName,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                    PopupMenuButton<OrganizationContext>(
+                      padding: EdgeInsets.zero,
+                      position: PopupMenuPosition.under,
+                      onSelected: controller.selectOrganization,
+                      itemBuilder: (context) => [
+                        for (final item
+                            in controller.session?.organizations ??
+                                const <OrganizationContext>[])
+                          PopupMenuItem(
+                            value: item,
+                            child: Text(
+                              '${item.organizationName} · ${item.role.label}',
+                            ),
+                          ),
+                      ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            organization.organizationName,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          if ((controller.session?.organizations.length ?? 0) >
+                              1)
+                            const Icon(Icons.expand_more_rounded, size: 18),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -230,6 +257,57 @@ class _NoOrganization extends StatelessWidget {
           ),
         ),
       ),
+    ),
+  );
+}
+
+class _MorePage extends StatelessWidget {
+  const _MorePage({required this.controller});
+  final SessionController controller;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      children: [
+        Text('전체', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 28),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  controller.currentOrganization?.organizationName ?? '사업장',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  controller.session?.email ?? '',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        FutureBuilder<AppMetadata>(
+          future: AppMetadata.load(),
+          builder: (context, snapshot) => ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('앱 버전'),
+            trailing: Text(snapshot.data?.displayVersion ?? '-'),
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('로그아웃'),
+          trailing: const Icon(Icons.logout_rounded),
+          onTap: controller.signOut,
+        ),
+      ],
     ),
   );
 }

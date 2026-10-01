@@ -12,11 +12,21 @@ TimeFit의 직원·관리자·사업주용 iOS/Android 애플리케이션입니�
 
 ```bash
 flutter pub get
-flutter run \
+flutter run --flavor development \
   --dart-define=APP_ENV=development \
   --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co \
   --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_KEY
 ```
+
+환경별 실행값은 다음과 같습니다.
+
+| 환경 | Flavor | APP_ENV | 앱 식별자 |
+|---|---|---|---|
+| 개발 | `development` | `development` | `com.timefit.mobile.dev` |
+| 스테이징 | `staging` | `staging` | `com.timefit.mobile.staging` |
+| 운영 | `production` | `production` | `com.timefit.mobile` |
+
+Android Flavor가 구성되어 있습니다. iOS Scheme과 배포 서명은 Apple Developer 식별자를 확정한 뒤 연결합니다.
 
 운영 키나 서비스 역할 키를 저장소에 커밋하지 않습니다. 모바일 앱에는 공개 가능한 Supabase publishable key만 전달합니다.
 
@@ -25,7 +35,10 @@ flutter run \
 ```bash
 flutter analyze
 flutter test
-flutter build apk --debug
+flutter build apk --debug --flavor development \
+  --dart-define=APP_ENV=development \
+  --dart-define=SUPABASE_URL=https://example.supabase.co \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=test-key
 ```
 
 ## 저장소 경계
