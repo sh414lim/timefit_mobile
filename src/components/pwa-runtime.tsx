@@ -29,7 +29,11 @@ export function PwaRuntime() {
       refreshing.current = true;
       window.location.reload();
     };
-    window.addEventListener("load", register, { once: true });
+    if (document.readyState === "complete") {
+      void register();
+    } else {
+      window.addEventListener("load", register, { once: true });
+    }
     navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
     return () => {
       active = false;
