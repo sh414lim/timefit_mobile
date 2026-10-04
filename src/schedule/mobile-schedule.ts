@@ -9,6 +9,10 @@ export type ScheduleItem = {
   shift_name: string;
   is_day_off: boolean;
   updated_at: string;
+  schedule_revision: number;
+  acknowledged_revision: number;
+  changed: boolean;
+  previous: { starts_at: string | null; ends_at: string | null; shift_name: string | null; is_day_off: boolean } | null;
 };
 
 export type LeaveItem = {
@@ -17,6 +21,7 @@ export type LeaveItem = {
   ends_on: string;
   leave_type: string;
   amount: number;
+  day_part: "full" | "am" | "pm";
 };
 
 export type MobileScheduleRange = {
@@ -80,6 +85,19 @@ export function scheduleMinutes(item: ScheduleItem): number | null {
   const [startHour, startMinute] = item.starts_at.split(":").map(Number);
   const [endHour, endMinute] = item.ends_at.split(":").map(Number);
   return Math.max(0, endHour * 60 + endMinute - startHour * 60 - startMinute - item.break_minutes);
+}
+
+export function leaveConflictsWithSchedule(leave: LeaveItem, item: ScheduleItem): boolean {
+  if (item.is_day_off || !item.starts_at || !item.ends_at || !leaveCovers(leave, item.work_date)) return false;
+  if (leave.day_part === "full") return true;
+  const start = Number(item.starts_at.slice(0, 2)) * 60 + Number(item.starts_at.slice(3, 5));
+  const end = Number(item.ends_at.slice(0, 2)) * 60 + Number(item.ends_at.slice(3, 5));
+  return leave.day_part === "am" ? start < 13 * 60 : end > 13 * 60;
+}
+
+export async function acknowledgeSchedule(client: SupabaseClient, scheduleId: string, revision: number): Promise<void> {
+  const { error } = await client.rpc("timefit_user_mobile_acknowledge_schedule", { p_schedule_id: scheduleId, p_revision: revision });
+  if (error) throw error;
 }
 
 export function cacheKey(userId: string, organizationId: string, from: string, to: string): string {

@@ -9,4 +9,8 @@ describe("PWA static assets",()=>{
     const worker=readFileSync(resolve(root,"public/sw.js"),"utf8");
     expect(worker).toContain('url.pathname.startsWith("/api/")'); expect(worker).not.toContain("supabase.co"); expect(worker).not.toContain("localStorage"); expect(worker).not.toContain("Authorization");
   });
+  it("handles schedule push messages and notification deep links",()=>{
+    const worker=readFileSync(resolve(root,"public/sw.js"),"utf8");
+    expect(worker).toContain('addEventListener("push"'); expect(worker).toContain('addEventListener("notificationclick"'); expect(worker).toContain('/#schedule');
+  });
 });

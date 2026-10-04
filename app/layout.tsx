@@ -3,6 +3,7 @@ import { PwaRuntime } from "@/components/pwa-runtime";
 import "./globals.css";
 import "./auth.css";
 import "./role.css";
+import "./mob05.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },
