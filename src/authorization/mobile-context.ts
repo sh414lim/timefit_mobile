@@ -21,18 +21,21 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
   ],
   sub_manager: [
     { section: "home", label: "홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view"] },
+    { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
     { section: "more", label: "전체" }
   ],
   operations_lead: [
     { section: "home", label: "운영 홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view"] },
+    { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
     { section: "more", label: "전체" }
   ],
   owner: [
     { section: "home", label: "운영 홈" }, { section: "workplaces", label: "사업장" },
+    { section: "attendance", label: "근태" },
     { section: "approvals", label: "승인" }, { section: "notifications", label: "알림" }, { section: "more", label: "전체" }
   ]
 };
@@ -69,4 +72,3 @@ export function visibleNavigation(context: MobileRoleContext): NavigationItem[] 
 export function canAccessSection(context: MobileRoleContext, section: string): section is MobileSection {
   return visibleNavigation(context).some((item) => item.section === section);
 }
-
