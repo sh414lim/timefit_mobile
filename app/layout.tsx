@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { PwaRuntime } from "@/components/pwa-runtime";
 import "./globals.css";
 import "./auth.css";
+import "./role.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },

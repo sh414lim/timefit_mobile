@@ -1,0 +1,75 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { clearPrivateBrowserData } from "@/auth/session-storage";
+import type { UserContext } from "@/auth/user-context";
+import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection } from "@/authorization/mobile-context";
+
+const ACTIVE_CONTEXT_KEY = "timefit:active-context";
+
+const homeCopy = {
+  employee: ["오늘 근무", "출퇴근 상태", "내 요청", "다음 근무"],
+  sub_manager: ["담당 직원 현황", "승인 대기", "스케줄 변경", "운영 알림"],
+  operations_lead: ["전체 운영 현황", "승인 대기", "근태 예외", "스케줄 변경"],
+  owner: ["사업장 운영 현황", "승인 대기", "매출·재무 권한", "주요 알림"]
+} as const;
+
+function initialContext(contexts: MobileRoleContext[]): MobileRoleContext | null {
+  return contexts[0] ?? null;
+}
+
+export function RoleShell({ userContext, onSignOut }: { userContext: UserContext; onSignOut: () => Promise<void> }) {
+  const contexts = useMemo(() => deriveMobileContexts(userContext), [userContext]);
+  const [activeContext, setActiveContext] = useState<MobileRoleContext | null>(() => initialContext(contexts));
+  const [section, setSection] = useState<MobileSection>("home");
+  const [deniedSection, setDeniedSection] = useState<string | null>(null);
+
+  const items = activeContext ? visibleNavigation(activeContext) : [];
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const stored = window.localStorage.getItem(ACTIVE_CONTEXT_KEY);
+      const restored = contexts.find((context) => context.id === stored);
+      if (restored) setActiveContext(restored);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [contexts]);
+
+  useEffect(() => {
+    const syncHash = () => {
+      if (!activeContext) return;
+      const requested = window.location.hash.replace("#", "") || "home";
+      if (canAccessSection(activeContext, requested)) { setDeniedSection(null); setSection(requested); }
+      else { setDeniedSection(requested); setSection("home"); }
+    };
+    const timer = window.setTimeout(syncHash, 0);
+    window.addEventListener("hashchange", syncHash);
+    return () => { window.clearTimeout(timer); window.removeEventListener("hashchange", syncHash); };
+  }, [activeContext]);
+
+  if (!activeContext) return <section className="role-empty"><h1>사용 가능한 역할이 없어요</h1><p>관리자에게 사업장과 역할 설정을 요청해 주세요.</p><button className="secondary-button" onClick={onSignOut}>로그아웃</button></section>;
+
+  function switchContext(contextId: string) {
+    const next = contexts.find((context) => context.id === contextId);
+    if (!next) return;
+    clearPrivateBrowserData();
+    window.sessionStorage.clear();
+    window.localStorage.setItem(ACTIVE_CONTEXT_KEY, next.id);
+    window.history.replaceState(null, "", "#home");
+    setDeniedSection(null); setSection("home"); setActiveContext(next);
+  }
+
+  function navigate(next: MobileSection) {
+    if (!activeContext) return;
+    if (!canAccessSection(activeContext, next)) { setDeniedSection(next); return; }
+    window.history.pushState(null, "", `#${next}`);
+    setDeniedSection(null); setSection(next);
+  }
+
+  const displayName = userContext.profile?.display_name ?? "TimeFit 사용자";
+  return <main className="mobile-shell">
+    <header className="mobile-header"><div><span>{activeContext.organizationName}</span><strong>{displayName}님</strong></div>{contexts.length > 1 ? <label className="context-select"><span className="sr-only">활성 역할</span><select aria-label="활성 역할" value={activeContext.id} onChange={(event)=>switchContext(event.target.value)}>{contexts.map((context)=><option key={context.id} value={context.id}>{roleLabels[context.role]}</option>)}</select></label> : <span className="role-chip">{roleLabels[activeContext.role]}</span>}</header>
+    {deniedSection ? <section className="permission-state" role="alert"><span>권한 없음</span><h1>이 기능을 사용할 권한이 없어요</h1><p>현재 역할에 허용된 화면으로 안전하게 이동했습니다.</p><button className="primary-button" onClick={()=>setDeniedSection(null)}>홈으로 돌아가기</button></section> : <section className="role-content"><span className="eyebrow blue">MOB-04 · {roleLabels[activeContext.role]} 모드</span><h1>{section === "home" ? `${roleLabels[activeContext.role]} 홈` : items.find((item)=>item.section===section)?.label}</h1><p className="role-description">서버에서 확인된 사업장·역할·권한 범위만 표시합니다.</p>{section === "home" ? <div className="role-grid">{homeCopy[activeContext.role].map((label,index)=><article key={label}><span>{index+1}</span><strong>{label}</strong><p>후속 기능 티켓에서 실제 데이터를 연결합니다.</p></article>)}</div> : <div className="placeholder-card"><strong>{items.find((item)=>item.section===section)?.label}</strong><p>권한 확인이 완료되었습니다. 상세 기능은 연결되는 후속 티켓에서 제공합니다.</p></div>}</section>}
+    <nav className="bottom-nav" aria-label="주요 메뉴">{items.map((item)=><button key={item.section} className={section===item.section&&!deniedSection?"active":""} onClick={()=>navigate(item.section)} aria-current={section===item.section&&!deniedSection?"page":undefined}><span aria-hidden="true">{item.section === "home" ? "●" : "○"}</span>{item.label}</button>)}</nav>
+  </main>;
+}
