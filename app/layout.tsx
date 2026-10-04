@@ -4,6 +4,7 @@ import "./globals.css";
 import "./auth.css";
 import "./role.css";
 import "./mob05.css";
+import "./mob06.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },
