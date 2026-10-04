@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+function withTimeout<T>(promise: Promise<T>, milliseconds = 5000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("PUSH_REQUEST_TIMEOUT")), milliseconds);
+    promise.then((value) => { window.clearTimeout(timer); resolve(value); }, (error) => { window.clearTimeout(timer); reject(error); });
+  });
+}
+
 function applicationServerKey(value: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - value.length % 4) % 4);
   const decoded = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
@@ -17,10 +24,10 @@ export function canEnablePush(publicKey?: string): boolean {
 }
 
 export async function enableSchedulePush(client: SupabaseClient, publicKey: string): Promise<void> {
-  const permission = await Notification.requestPermission();
+  const permission = Notification.permission === "default" ? await withTimeout(Notification.requestPermission()) : Notification.permission;
   if (permission !== "granted") throw new Error("PUSH_PERMISSION_DENIED");
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) });
+  const registration = await withTimeout(navigator.serviceWorker.ready);
+  const subscription = await withTimeout(registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) }));
   const { error } = await client.rpc("timefit_user_mobile_register_push", {
     p_endpoint: subscription.endpoint,
     p_p256dh: key(subscription, "p256dh"),
