@@ -7,6 +7,7 @@ import { parseLoginIdentity } from "@/auth/identity";
 import { clearPrivateBrowserData } from "@/auth/session-storage";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "@/auth/supabase";
 import { hasActiveWorkScope, loadUserContext, type UserContext } from "@/auth/user-context";
+import { RoleShell } from "@/components/role-shell";
 
 type Screen = "loading" | "signed-out" | "signed-in" | "unlinked" | "error" | "config-missing";
 
@@ -81,8 +82,5 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
 
   if (screen === "error") return <main className="auth-shell"><BrandHeader /><section className="notice-card danger"><span>연결 오류</span><h1>계정 정보를 확인할 수 없어요</h1><p>{message}</p><button className="primary-button" onClick={()=>window.location.reload()}>다시 시도</button><button className="text-button" onClick={signOut}>로그아웃</button></section></main>;
 
-  const organization = context?.membership?.timefit_user_organizations?.name ?? "내 사업장";
-  const displayName = context?.profile?.display_name ?? "TimeFit 사용자";
-  const role = context?.managementAccount?.role_code ?? context?.membership?.role ?? context?.profile?.role ?? "직원";
-  return <main className="auth-shell"><BrandHeader /><section className="welcome-card"><span className="eyebrow">로그인 완료</span><h1>{displayName}님,<br />반가워요</h1><p>{organization} · {role}</p><div className="scope-status"><span className="status-dot" />본인 계정과 사업장 권한이 확인되었습니다</div></section><section className="session-card"><div><strong>로그인 유지 중</strong><p>앱을 다시 실행해도 안전하게 세션을 복원합니다.</p></div><button className="secondary-button" onClick={signOut} disabled={submitting}>로그아웃</button></section></main>;
+  return context ? <RoleShell userContext={context} onSignOut={signOut} /> : null;
 }
