@@ -1,0 +1,6 @@
+const VERSION="timefit-shell-v1";const STATIC_CACHE=`${VERSION}-static`;const APP_SHELL=["/offline.html","/icons/icon-192.png","/icons/icon-512.png"];
+self.addEventListener("install",event=>{event.waitUntil(caches.open(STATIC_CACHE).then(cache=>cache.addAll(APP_SHELL)))});
+self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith("timefit-shell-")&&key!==STATIC_CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});
+self.addEventListener("message",event=>{if(event.data?.type==="SKIP_WAITING")self.skipWaiting()});
+function isCacheableStatic(request,url){if(request.method!=="GET"||url.origin!==self.location.origin)return false;if(url.pathname.startsWith("/api/"))return false;return url.pathname.startsWith("/_next/static/")||url.pathname.startsWith("/icons/")||url.pathname==="/favicon.ico"}
+self.addEventListener("fetch",event=>{const{request}=event;const url=new URL(request.url);if(request.mode==="navigate"){event.respondWith(fetch(request).catch(()=>caches.match("/offline.html")));return}if(!isCacheableStatic(request,url))return;event.respondWith(caches.open(STATIC_CACHE).then(async cache=>{const cached=await cache.match(request);if(cached)return cached;const response=await fetch(request);if(response.ok)await cache.put(request,response.clone());return response}))});
