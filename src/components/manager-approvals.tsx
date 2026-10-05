@@ -6,6 +6,7 @@ import { getSupabaseBrowserClient } from "@/auth/supabase";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { approvalCacheKey, loadApprovalInbox, reviewApproval, validateReview, type ApprovalInbox, type ApprovalItem, type ApprovalStatus } from "@/approvals/mobile-approvals";
 import { useUpdateSafetyBlocker } from "@/pwa/update-safety";
+import { notificationTargetId } from "@/notifications/inbox";
 
 const statusLabel: Record<ApprovalStatus, string> = { pending: "승인 대기", approved: "승인", rejected: "반려" };
 const kindLabel = { leave: "휴가", schedule: "스케줄" } as const;
@@ -55,6 +56,17 @@ export function ManagerApprovals({ context, userContext }: { context: MobileRole
     }, 0);
     return () => window.clearTimeout(timer);
   }, [cacheKey, refresh]);
+
+  useEffect(() => {
+    if (!inbox) return;
+    const timer = window.setTimeout(() => {
+      const targetId = notificationTargetId(`/${window.location.hash}`);
+      const target = inbox.items.find((item) => item.id === targetId && item.kind === "leave");
+      if (!target) return;
+      setTab(target.status); setKind("leave"); setSelected(target); setComment(target.review_comment ?? "");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [inbox]);
 
   const items = useMemo(() => (inbox?.items ?? []).filter((item) => item.status === tab && (kind === "all" || item.kind === kind)), [inbox?.items, kind, tab]);
 
