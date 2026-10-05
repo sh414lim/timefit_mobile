@@ -25,7 +25,7 @@ describe("mobile role contexts", () => {
   it("gives owners the owner shell without granting it to managers", () => {
     const contexts = deriveMobileContexts({ ...employee, isOrganizationOwner: true });
     expect(contexts.map((context) => context.role)).toContain("owner");
-    expect(visibleNavigation(contexts.find((context) => context.role === "owner")!).map((item) => item.label)).toEqual(["운영 홈", "사업장", "승인", "알림", "전체"]);
+    expect(visibleNavigation(contexts.find((context) => context.role === "owner")!).map((item) => item.label)).toEqual(["운영 홈", "사업장", "근태", "승인", "알림", "전체"]);
   });
 
   it("omits suspended management contexts", () => {
@@ -33,4 +33,3 @@ describe("mobile role contexts", () => {
     expect(contexts.map((context) => context.role)).toEqual(["employee"]);
   });
 });
-
