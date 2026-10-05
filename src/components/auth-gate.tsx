@@ -4,7 +4,7 @@ import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { parseLoginIdentity } from "@/auth/identity";
-import { clearPrivateBrowserData } from "@/auth/session-storage";
+import { clearPrivateBrowserData, reconcileSessionUser } from "@/auth/session-storage";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "@/auth/supabase";
 import { hasActiveWorkScope, loadUserContext, type UserContext } from "@/auth/user-context";
 import { RoleShell } from "@/components/role-shell";
@@ -26,6 +26,7 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const resolveSession = useCallback(async (session: Session | null) => {
+    reconcileSessionUser(session?.user.id ?? null);
     if (!session) { setContext(null); setScreen("signed-out"); return; }
     try {
       const nextContext = await loadUserContext(getSupabaseBrowserClient(supabaseUrl, supabaseKey));
@@ -68,7 +69,6 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
     setSubmitting(true);
     await getSupabaseBrowserClient(supabaseUrl, supabaseKey).auth.signOut({ scope: "local" });
     clearPrivateBrowserData();
-    window.sessionStorage.clear();
     setSubmitting(false);
   }
 

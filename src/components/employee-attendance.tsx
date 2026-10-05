@@ -8,6 +8,7 @@ import { loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQr
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
 import { classifyRequestFailure, isAmbiguousWriteFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
+import { useUpdateSafetyBlocker } from "@/pwa/update-safety";
 
 type Recovery = { token: string; requestKey: string };
 
@@ -20,6 +21,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
   const [recovery, setRecovery] = useState<Recovery | null>(null);
   const requestKeyRef = useRef(crypto.randomUUID());
   const busyRef = useRef(false);
+  useUpdateSafetyBlocker("attendance-write", "출퇴근 기록을 처리 중이에요", busy || recovery !== null);
 
   const refresh = useCallback(async () => {
     try {

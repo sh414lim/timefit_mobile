@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearPrivateBrowserData } from "../src/auth/session-storage";
+import { clearPrivateBrowserData, reconcileSessionUser, SESSION_USER_KEY } from "../src/auth/session-storage";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -24,5 +24,18 @@ describe("private browser data", () => {
     expect(storage.getItem("mobile:cached-home")).toBeNull();
     expect(storage.getItem("theme")).toBe("light");
   });
-});
 
+  it("clears both stores only when the authenticated user actually changes", () => {
+    const local = new MemoryStorage();
+    const session = new MemoryStorage();
+    local.setItem(SESSION_USER_KEY, "user-one");
+    local.setItem("timefit:home", "one");
+    session.setItem("mobile:attendance", "one");
+    expect(reconcileSessionUser("user-one", local, session)).toBe(false);
+    expect(session.getItem("mobile:attendance")).toBe("one");
+    expect(reconcileSessionUser("user-two", local, session)).toBe(true);
+    expect(local.getItem("timefit:home")).toBeNull();
+    expect(session.getItem("mobile:attendance")).toBeNull();
+    expect(local.getItem(SESSION_USER_KEY)).toBe("user-two");
+  });
+});
