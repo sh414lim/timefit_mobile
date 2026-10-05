@@ -8,6 +8,7 @@ import {cancelLeave,dayPartLabel,leaveCacheKey,leaveDraftKey,leaveStatusLabel,lo
 import {dateKeyInTimeZone} from "@/schedule/mobile-schedule";
 import {reportNetworkFailure,reportNetworkSuccess} from "@/network/connectivity";
 import {classifyRequestFailure,isAmbiguousWriteFailure,isBrowserOnline,withRequestTimeout} from "@/network/request-policy";
+import {useUpdateSafetyBlocker} from "@/pwa/update-safety";
 
 function errorMessage(error:unknown){
   const message=String((error as {message?:string})?.message??"");
@@ -39,8 +40,10 @@ export function EmployeeLeave({context,userContext}:{context:MobileRoleContext;u
   const [reason,setReason]=useState("");
   const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
   const [retrySubmit,setRetrySubmit]=useState(false);
+  const [cancelling,setCancelling]=useState(false);
   const cancelKeys=useRef(new Map<string,string>());
   const today=useMemo(()=>dateKeyInTimeZone(new Date(),summary?.timezone??"Asia/Seoul"),[summary?.timezone]);
+  useUpdateSafetyBlocker("leave-write","휴가 신청을 저장하거나 복구 중이에요",saving||retrySubmit||cancelling);
 
   const refresh=useCallback(async(background=false)=>{
     if(background) setRefreshing(true); else setLoading(true); setError("");
@@ -55,7 +58,7 @@ export function EmployeeLeave({context,userContext}:{context:MobileRoleContext;u
 
   function prepareSubmit(){const validation=validateLeaveDraft(startsOn,endsOn,dayPart,reason,today);if(validation){setError(validation);return;}setError("");setConfirming(true);}
   async function save(){if(navigator.onLine===false){reportNetworkFailure("offline");setRetrySubmit(true);setError("오프라인에서는 휴가를 제출할 수 없어요. 연결 후 다시 시도해 주세요.");return;}setSaving(true);setError("");try{const result=await withRequestTimeout(submitLeave(getSupabaseBrowserClient(),context.organizationId,{startsOn,endsOn,dayPart,reason,requestKey}));reportNetworkSuccess();setRetrySubmit(false);window.sessionStorage.removeItem(draftCache);setNotice(result.schedule_conflicts?`신청했어요. 확정 근무 ${result.schedule_conflicts}건과 겹쳐 관리자 확인이 필요해요.`:"휴가 신청을 서버에 저장했어요.");setConfirming(false);setFormOpen(false);setStartsOn("");setEndsOn("");setDayPart("full");setReason("");setRequestKey(crypto.randomUUID());await refresh(true);}catch(nextError){const failure=classifyRequestFailure(nextError,isBrowserOnline());if(isAmbiguousWriteFailure(failure)){reportNetworkFailure(failure==="offline"?"offline":"degraded");setRetrySubmit(true);setError("저장 결과를 확인하지 못했어요. 연결 후 같은 신청을 다시 확인해 주세요.");}else{reportNetworkSuccess();setError(errorMessage(nextError));}}finally{setSaving(false);}}
-  async function cancel(id:string){if(navigator.onLine===false){reportNetworkFailure("offline");setError("오프라인에서는 신청을 취소할 수 없어요.");return;}setError("");const key=cancelKeys.current.get(id)??crypto.randomUUID();cancelKeys.current.set(id,key);try{await withRequestTimeout(cancelLeave(getSupabaseBrowserClient(),context.organizationId,id,key));reportNetworkSuccess();cancelKeys.current.delete(id);setNotice("휴가 신청 취소를 서버에서 확인했어요.");await refresh(true);}catch(nextError){const failure=classifyRequestFailure(nextError,isBrowserOnline());if(isAmbiguousWriteFailure(failure))reportNetworkFailure(failure==="offline"?"offline":"degraded");else reportNetworkSuccess();setError(isAmbiguousWriteFailure(failure)?"취소 결과를 확인하지 못했어요. 연결 후 같은 요청을 다시 시도해 주세요.":errorMessage(nextError));}}
+  async function cancel(id:string){if(navigator.onLine===false){reportNetworkFailure("offline");setError("오프라인에서는 신청을 취소할 수 없어요.");return;}setError("");setCancelling(true);const key=cancelKeys.current.get(id)??crypto.randomUUID();cancelKeys.current.set(id,key);try{await withRequestTimeout(cancelLeave(getSupabaseBrowserClient(),context.organizationId,id,key));reportNetworkSuccess();cancelKeys.current.delete(id);setNotice("휴가 신청 취소를 서버에서 확인했어요.");await refresh(true);}catch(nextError){const failure=classifyRequestFailure(nextError,isBrowserOnline());if(isAmbiguousWriteFailure(failure))reportNetworkFailure(failure==="offline"?"offline":"degraded");else reportNetworkSuccess();setError(isAmbiguousWriteFailure(failure)?"취소 결과를 확인하지 못했어요. 연결 후 같은 요청을 다시 시도해 주세요.":errorMessage(nextError));}finally{setCancelling(false);}}
 
   if(loading&&!summary)return <section className="leave-state" aria-busy="true"><div className="spinner"/><h2>휴가 정보를 불러오고 있어요</h2></section>;
   if(error&&!summary)return <section className="leave-state error"><span>연결 오류</span><h2>{error}</h2><button className="primary-button" onClick={()=>void refresh()}>다시 시도</button></section>;
