@@ -9,7 +9,10 @@ import { ManagerApprovals } from "@/components/manager-approvals";
 import { ManagerAttendance } from "@/components/manager-attendance";
 import { EmployeeAttendance } from "@/components/employee-attendance";
 import { NetworkBanner } from "@/components/network-banner";
+import { NotificationInbox } from "@/components/notification-inbox";
 import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection } from "@/authorization/mobile-context";
+import { getSupabaseBrowserClient } from "@/auth/supabase";
+import { canEnablePush, enableSchedulePush } from "@/notifications/push";
 
 const ACTIVE_CONTEXT_KEY = "timefit:active-context";
 
@@ -40,6 +43,12 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
     }, 0);
     return () => window.clearTimeout(timer);
   }, [contexts]);
+
+  useEffect(() => {
+    const publicKey = process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY;
+    if (!publicKey || !canEnablePush(publicKey) || Notification.permission !== "granted") return;
+    void enableSchedulePush(getSupabaseBrowserClient(), publicKey).catch(() => undefined);
+  }, [userContext.profile?.id]);
 
   useEffect(() => {
     const syncHash = () => {
@@ -76,7 +85,7 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
   return <main className="mobile-shell">
     <NetworkBanner />
     <header className="mobile-header"><div><span>{activeContext.organizationName}</span><strong>{displayName}님</strong></div>{contexts.length > 1 ? <label className="context-select"><span className="sr-only">활성 역할</span><select aria-label="활성 역할" value={activeContext.id} onChange={(event)=>switchContext(event.target.value)}>{contexts.map((context)=><option key={context.id} value={context.id}>{roleLabels[context.role]}</option>)}</select></label> : <span className="role-chip">{roleLabels[activeContext.role]}</span>}</header>
-    {deniedSection ? <section className="permission-state" role="alert"><span>권한 없음</span><h1>이 기능을 사용할 권한이 없어요</h1><p>현재 역할에 허용된 화면으로 안전하게 이동했습니다.</p><button className="primary-button" onClick={()=>setDeniedSection(null)}>홈으로 돌아가기</button></section> : <section className="role-content"><span className="eyebrow blue">{section === "schedule" && activeContext.role === "employee" ? "MOB-05 · 내 일정" : section === "requests" && activeContext.role === "employee" ? "MOB-06 · 휴가·연차" : section === "attendance" && activeContext.role === "employee" ? "QR 출퇴근" : section === "approvals" ? "MOB-07 · 관리자 승인함" : section === "attendance" && activeContext.role !== "employee" ? "MOB-08 · 관리자 근태" : `MOB-04 · ${roleLabels[activeContext.role]} 모드`}</span><h1>{section === "home" ? `${roleLabels[activeContext.role]} 홈` : section === "requests"&&activeContext.role === "employee" ? "휴가·연차" : items.find((item)=>item.section===section)?.label}</h1><p className="role-description">서버에서 확인된 사업장·역할·권한 범위만 표시합니다.</p>{section === "home" ? <div className="role-grid">{homeCopy[activeContext.role].map((label,index)=><article key={label}><span>{index+1}</span><strong>{label}</strong><p>후속 기능 티켓에서 실제 데이터를 연결합니다.</p></article>)}</div> : section === "schedule" && activeContext.role === "employee" ? <EmployeeSchedule context={activeContext} userContext={userContext} /> : section === "requests" && activeContext.role === "employee" ? <EmployeeLeave context={activeContext} userContext={userContext} /> : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} /> : section === "attendance" && activeContext.role === "employee" ? <EmployeeAttendance context={activeContext} /> : section === "attendance" && activeContext.role !== "employee" ? <ManagerAttendance context={activeContext} userContext={userContext} /> : <div className="placeholder-card"><strong>{items.find((item)=>item.section===section)?.label}</strong><p>권한 확인이 완료되었습니다. 상세 기능은 연결되는 후속 티켓에서 제공합니다.</p></div>}</section>}
+    {deniedSection ? <section className="permission-state" role="alert"><span>권한 없음</span><h1>이 기능을 사용할 권한이 없어요</h1><p>현재 역할에 허용된 화면으로 안전하게 이동했습니다.</p><button className="primary-button" onClick={()=>setDeniedSection(null)}>홈으로 돌아가기</button></section> : <section className="role-content"><span className="eyebrow blue">{section === "schedule" && activeContext.role === "employee" ? "MOB-05 · 내 일정" : section === "requests" && activeContext.role === "employee" ? "MOB-06 · 휴가·연차" : section === "attendance" && activeContext.role === "employee" ? "QR 출퇴근" : section === "approvals" ? "MOB-07 · 관리자 승인함" : section === "notifications" ? "ALT-01 · 알림" : section === "attendance" && activeContext.role !== "employee" ? "MOB-08 · 관리자 근태" : `MOB-04 · ${roleLabels[activeContext.role]} 모드`}</span><h1>{section === "home" ? `${roleLabels[activeContext.role]} 홈` : section === "requests"&&activeContext.role === "employee" ? "휴가·연차" : items.find((item)=>item.section===section)?.label}</h1><p className="role-description">서버에서 확인된 사업장·역할·권한 범위만 표시합니다.</p>{section === "home" ? <div className="role-grid">{homeCopy[activeContext.role].map((label,index)=><article key={label}><span>{index+1}</span><strong>{label}</strong><p>후속 기능 티켓에서 실제 데이터를 연결합니다.</p></article>)}</div> : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate}/> : section === "schedule" && activeContext.role === "employee" ? <EmployeeSchedule context={activeContext} userContext={userContext} /> : section === "requests" && activeContext.role === "employee" ? <EmployeeLeave context={activeContext} userContext={userContext} /> : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} /> : section === "attendance" && activeContext.role === "employee" ? <EmployeeAttendance context={activeContext} /> : section === "attendance" && activeContext.role !== "employee" ? <ManagerAttendance context={activeContext} userContext={userContext} /> : <div className="placeholder-card"><strong>{items.find((item)=>item.section===section)?.label}</strong><p>권한 확인이 완료되었습니다. 상세 기능은 연결되는 후속 티켓에서 제공합니다.</p></div>}</section>}
     <nav className="bottom-nav" aria-label="주요 메뉴">{items.map((item)=><button key={item.section} className={section===item.section&&!deniedSection?"active":""} onClick={()=>navigate(item.section)} aria-current={section===item.section&&!deniedSection?"page":undefined}><span aria-hidden="true">{item.section === "home" ? "●" : "○"}</span>{item.label}</button>)}</nav>
   </main>;
 }

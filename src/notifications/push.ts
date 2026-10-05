@@ -27,12 +27,24 @@ export async function enableSchedulePush(client: SupabaseClient, publicKey: stri
   const permission = Notification.permission === "default" ? await withTimeout(Notification.requestPermission()) : Notification.permission;
   if (permission !== "granted") throw new Error("PUSH_PERMISSION_DENIED");
   const registration = await withTimeout(navigator.serviceWorker.ready);
-  const subscription = await withTimeout(registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) }));
+  const existing = await withTimeout(registration.pushManager.getSubscription());
+  const subscription = existing ?? await withTimeout(registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) }));
   const { error } = await client.rpc("timefit_user_mobile_register_push", {
     p_endpoint: subscription.endpoint,
     p_p256dh: key(subscription, "p256dh"),
     p_auth_secret: key(subscription, "auth"),
-    p_user_agent: navigator.userAgent
+    p_user_agent: navigator.userAgent,
+    p_expiration_time: subscription.expirationTime ? new Date(subscription.expirationTime).toISOString() : null
   });
   if (error) { await subscription.unsubscribe(); throw error; }
+}
+
+export async function revokePushSubscription(client: SupabaseClient): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  const registration = await withTimeout(navigator.serviceWorker.ready);
+  const subscription = await withTimeout(registration.pushManager.getSubscription());
+  if (!subscription) return;
+  const { error } = await client.rpc("timefit_user_mobile_revoke_push", { p_endpoint: subscription.endpoint });
+  if (error) throw error;
+  await withTimeout(subscription.unsubscribe());
 }
