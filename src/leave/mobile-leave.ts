@@ -19,6 +19,7 @@ export function validateLeaveDraft(startsOn:string,endsOn:string,dayPart:LeaveDa
 }
 
 export function leaveCacheKey(userId:string,organizationId:string){ return `timefit:leave:v1:${userId}:${organizationId}`; }
+export function leaveDraftKey(userId:string,organizationId:string){ return `timefit:leave-draft:v1:${userId}:${organizationId}:employee`; }
 
 export async function loadLeaveSummary(client:SupabaseClient,organizationId:string):Promise<LeaveSummary>{
   const {data,error}=await client.rpc("timefit_user_mobile_leave_summary",{p_organization_id:organizationId});
@@ -31,6 +32,6 @@ export async function submitLeave(client:SupabaseClient,organizationId:string,dr
   if(error) throw error; return data as {request:LeaveRequest;schedule_conflicts:number;duplicate:boolean};
 }
 
-export async function cancelLeave(client:SupabaseClient,organizationId:string,requestId:string){
-  const {error}=await client.rpc("timefit_user_mobile_cancel_leave",{p_organization_id:organizationId,p_request_id:requestId}); if(error) throw error;
+export async function cancelLeave(client:SupabaseClient,organizationId:string,requestId:string,requestKey:string){
+  const {data,error}=await client.rpc("timefit_user_mobile_cancel_leave",{p_organization_id:organizationId,p_request_id:requestId,p_request_key:requestKey}); if(error) throw error; return data as LeaveRequest;
 }

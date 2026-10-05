@@ -6,6 +6,8 @@ import { getSupabaseBrowserClient } from "@/auth/supabase";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { canEnablePush, enableSchedulePush } from "@/notifications/push";
 import { acknowledgeSchedule, addDays, cacheKey, dateKeyInTimeZone, leaveConflictsWithSchedule, leaveCovers, loadMobileScheduleRange, monthRange, scheduleMinutes, startOfWeek, type MobileScheduleRange, type ScheduleItem } from "@/schedule/mobile-schedule";
+import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
+import { classifyRequestFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
 
 type ViewMode = "week" | "month";
 const weekdays = ["월", "화", "수", "목", "금", "토", "일"];
@@ -34,11 +36,14 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
     setError("");
     const key = cacheKey(userId, context.organizationId, range.from, range.to);
     try {
-      const result = await loadMobileScheduleRange(getSupabaseBrowserClient(), context.organizationId, range.from, range.to);
+      const result = await withRequestTimeout(loadMobileScheduleRange(getSupabaseBrowserClient(), context.organizationId, range.from, range.to));
       scheduleRef.current = result;
       setSchedule(result);
       window.sessionStorage.setItem(key, JSON.stringify(result));
-    } catch {
+      reportNetworkSuccess(result.serverTime);
+    } catch (nextError) {
+      const failure = classifyRequestFailure(nextError, isBrowserOnline());
+      if (failure === "offline" || failure === "timeout" || failure === "transport") reportNetworkFailure(failure === "offline" ? "offline" : "degraded"); else reportNetworkSuccess();
       if (!scheduleRef.current) setError("스케줄을 불러오지 못했어요.");
       else setError("최신 일정을 확인하지 못했어요.");
     } finally { setLoading(false); setRefreshing(false); }
