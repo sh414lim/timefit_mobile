@@ -53,7 +53,7 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
   useEffect(() => {
     const syncHash = () => {
       if (!activeContext) return;
-      const requested = window.location.hash.replace("#", "") || "home";
+      const requested = (window.location.hash.replace("#", "").split("?")[0] || "home");
       if (canAccessSection(activeContext, requested)) { setDeniedSection(null); setSection(requested); }
       else { setDeniedSection(requested); setSection("home"); }
     };
@@ -73,10 +73,11 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
     setDeniedSection(null); setSection("home"); setActiveContext(next);
   }
 
-  function navigate(next: MobileSection) {
+  function navigate(next: MobileSection, path?: string) {
     if (!activeContext) return;
     if (!canAccessSection(activeContext, next)) { setDeniedSection(next); return; }
-    window.history.pushState(null, "", `#${next}`);
+    const destination=path?.startsWith(`/#${next}`)?path:`/#${next}`;
+    window.history.pushState(null, "", destination);
     setDeniedSection(null); setSection(next);
   }
 
