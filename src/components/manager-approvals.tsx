@@ -5,6 +5,7 @@ import type { UserContext } from "@/auth/user-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { approvalCacheKey, loadApprovalInbox, reviewApproval, validateReview, type ApprovalInbox, type ApprovalItem, type ApprovalStatus } from "@/approvals/mobile-approvals";
+import { useUpdateSafetyBlocker } from "@/pwa/update-safety";
 
 const statusLabel: Record<ApprovalStatus, string> = { pending: "승인 대기", approved: "승인", rejected: "반려" };
 const kindLabel = { leave: "휴가", schedule: "스케줄" } as const;
@@ -33,6 +34,7 @@ export function ManagerApprovals({ context, userContext }: { context: MobileRole
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useUpdateSafetyBlocker("approval-write", "승인 결과를 저장 중이에요", saving);
 
   const refresh = useCallback(async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
