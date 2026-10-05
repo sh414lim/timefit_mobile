@@ -10,6 +10,7 @@ import "./mob08.css";
 import "./mob08-navigation.css";
 import "./qr-attendance.css";
 import "./mob09.css";
+import "./alt01.css";
 import "./mob10.css";
 
 export const metadata: Metadata = {
