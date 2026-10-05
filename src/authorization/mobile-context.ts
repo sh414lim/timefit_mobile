@@ -24,6 +24,7 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
+    { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
   operations_lead: [
@@ -31,6 +32,7 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
+    { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
   owner: [
