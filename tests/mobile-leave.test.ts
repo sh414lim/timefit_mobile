@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {dayPartLabel,leaveCacheKey,leaveStatusLabel,validateLeaveDraft} from "../src/leave/mobile-leave";
+import {cancelLeave,dayPartLabel,leaveCacheKey,leaveStatusLabel,validateLeaveDraft} from "../src/leave/mobile-leave";
 
 describe("mobile employee leave",()=>{
   it("validates date order, past dates, half-day range and reason length",()=>{
@@ -15,4 +15,5 @@ describe("mobile employee leave",()=>{
     expect(dayPartLabel.pm).toBe("오후 반차");
     expect(leaveCacheKey("a","org")).not.toBe(leaveCacheKey("b","org"));
   });
+  it("sends an idempotency key when cancelling",async()=>{const rpc=async(name:string,args:unknown)=>{expect(name).toBe("timefit_user_mobile_cancel_leave");expect(args).toMatchObject({p_request_key:"cancel-1"});return {data:{id:"leave-1"},error:null};};await cancelLeave({rpc} as never,"org","leave-1","cancel-1");});
 });
