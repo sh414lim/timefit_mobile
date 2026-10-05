@@ -1,0 +1,11 @@
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+const root = resolve(import.meta.dirname, "..");
+const template = await readFile(resolve(root, "public/sw.template.js"), "utf8");
+const lock = await readFile(resolve(root, "package-lock.json"));
+const fallback = createHash("sha256").update(lock).digest("hex").slice(0, 12);
+const source = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || process.env.TIMEFIT_BUILD_ID || fallback;
+const buildId = source.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 40) || fallback;
+await writeFile(resolve(root, "public/sw.js"), template.replaceAll("__TIMEFIT_BUILD_ID__", buildId));
+console.log(`Generated public/sw.js for ${buildId}`);

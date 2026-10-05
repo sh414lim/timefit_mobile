@@ -1,0 +1,5 @@
+.update-banner button:disabled {
+  background: #3f4650;
+  color: #c9cdd2;
+  cursor: wait;
+}

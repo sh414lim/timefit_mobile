@@ -68,7 +68,6 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
     const next = contexts.find((context) => context.id === contextId);
     if (!next) return;
     clearPrivateBrowserData();
-    window.sessionStorage.clear();
     window.localStorage.setItem(ACTIVE_CONTEXT_KEY, next.id);
     window.history.replaceState(null, "", "#home");
     setDeniedSection(null); setSection("home"); setActiveContext(next);
