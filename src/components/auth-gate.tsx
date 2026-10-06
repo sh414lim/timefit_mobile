@@ -8,6 +8,7 @@ import { clearPrivateBrowserData, reconcileSessionUser } from "@/auth/session-st
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "@/auth/supabase";
 import { hasActiveWorkScope, loadUserContext, type UserContext } from "@/auth/user-context";
 import { RoleShell } from "@/components/role-shell";
+import { revokePushSubscription } from "@/notifications/push";
 
 type Screen = "loading" | "signed-out" | "signed-in" | "unlinked" | "error" | "config-missing";
 
@@ -67,7 +68,9 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
 
   async function signOut() {
     setSubmitting(true);
-    await getSupabaseBrowserClient(supabaseUrl, supabaseKey).auth.signOut({ scope: "local" });
+    const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
+    try { await revokePushSubscription(client); } catch { /* Logout must still complete if browser push cleanup fails. */ }
+    await client.auth.signOut({ scope: "local" });
     clearPrivateBrowserData();
     setSubmitting(false);
   }

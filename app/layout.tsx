@@ -10,6 +10,8 @@ import "./mob08.css";
 import "./mob08-navigation.css";
 import "./qr-attendance.css";
 import "./mob09.css";
+import "./alt01.css";
+import "./alt02.css";
 import "./mob10.css";
 import "./uiux01.css";
 

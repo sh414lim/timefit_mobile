@@ -11,7 +11,7 @@ describe("PWA static assets",()=>{
   });
   it("handles schedule push messages and notification deep links",()=>{
     const worker=readFileSync(resolve(root,"public/sw.js"),"utf8");
-    expect(worker).toContain('addEventListener("push"'); expect(worker).toContain('addEventListener("notificationclick"'); expect(worker).toContain('/#schedule');
+    expect(worker).toContain('addEventListener("push"'); expect(worker).toContain('addEventListener("notificationclick"'); expect(worker).toContain('notifications|schedule|attendance|requests|approvals');
   });
   it("uses a generated build cache and retains one prior generation until health confirmation",()=>{
     const worker=readFileSync(resolve(root,"public/sw.js"),"utf8");

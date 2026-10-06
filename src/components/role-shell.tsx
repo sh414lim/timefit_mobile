@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { clearPrivateBrowserData } from "@/auth/session-storage";
 import type { UserContext } from "@/auth/user-context";
 import { EmployeeSchedule } from "@/components/employee-schedule";
@@ -9,7 +9,11 @@ import { ManagerApprovals } from "@/components/manager-approvals";
 import { ManagerAttendance } from "@/components/manager-attendance";
 import { EmployeeAttendance } from "@/components/employee-attendance";
 import { NetworkBanner } from "@/components/network-banner";
+import { NotificationInbox } from "@/components/notification-inbox";
 import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection, type NavigationItem } from "@/authorization/mobile-context";
+import { getSupabaseBrowserClient } from "@/auth/supabase";
+import { loadNotifications } from "@/notifications/inbox";
+import { canEnablePush, enableSchedulePush } from "@/notifications/push";
 
 const ACTIVE_CONTEXT_KEY = "timefit:active-context";
 
@@ -70,29 +74,18 @@ function EmployeeHome({ context, displayName, navigate }: { context: MobileRoleC
 
 function ManagerHome({ context, navigate }: { context: MobileRoleContext; navigate: (section: MobileSection) => void }) {
   const canReview = canAccessSection(context, "approvals");
+  const canViewAttendance = canAccessSection(context, "attendance");
   return <section className="dashboard-home">
     <div className="manager-summary">
-      <button onClick={() => navigate("attendance")}><span>오늘 근태</span><strong>직원별 현황</strong><small>출근·퇴근·누락 확인</small></button>
-      <button onClick={() => canReview && navigate("approvals")} disabled={!canReview}><span>승인 업무</span><strong>{canReview ? "요청 검토" : "권한 없음"}</strong><small>{canReview ? "휴가·근무 변경 처리" : "관리 권한을 확인해 주세요"}</small></button>
+      {canViewAttendance && <button onClick={() => navigate("attendance")}><span>오늘 근태</span><strong>직원별 현황</strong><small>출근·퇴근·누락 확인</small></button>}
+      {canReview && <button onClick={() => navigate("approvals")}><span>승인 업무</span><strong>요청 검토</strong><small>휴가·근무 변경 처리</small></button>}
     </div>
     <div className="dashboard-section-heading"><h2>우선 확인</h2><span>{context.organizationName}</span></div>
     <div className="dashboard-list">
-      <button onClick={() => navigate("attendance")}><span className="menu-icon red"><Icon name="alert" /></span><span><strong>근태 예외 확인</strong><small>지각·누락·장시간 근무를 먼저 확인해요</small></span><Icon name="chevron" /></button>
+      {canViewAttendance && <button onClick={() => navigate("attendance")}><span className="menu-icon red"><Icon name="alert" /></span><span><strong>근태 예외 확인</strong><small>지각·누락·장시간 근무를 먼저 확인해요</small></span><Icon name="chevron" /></button>}
       {canReview && <button onClick={() => navigate("approvals")}><span className="menu-icon amber"><Icon name="approval" /></span><span><strong>승인 대기 요청</strong><small>직원 요청을 검토하고 결과를 알려요</small></span><Icon name="chevron" /></button>}
     </div>
   </section>;
-}
-
-function NotificationHub({ isEmployee, navigate }: { isEmployee: boolean; navigate: (section: MobileSection) => void }) {
-  const entries = isEmployee ? [
-    { icon: "calendar" as const, tone: "amber", title: "일정 변경 알림", body: "변경된 근무 시간은 내 일정에서 확인할 수 있어요.", target: "schedule" as const },
-    { icon: "check" as const, tone: "green", title: "요청 처리 결과", body: "휴가와 근무 변경의 승인 상태를 확인해요.", target: "requests" as const },
-    { icon: "scan" as const, tone: "blue", title: "출퇴근 기록", body: "매장 QR로 처리한 기록을 바로 확인해요.", target: "attendance" as const }
-  ] : [
-    { icon: "alert" as const, tone: "red", title: "근태 예외 알림", body: "출근 누락과 장시간 근무를 확인해요.", target: "attendance" as const },
-    { icon: "approval" as const, tone: "amber", title: "새 승인 요청", body: "처리가 필요한 직원 요청을 확인해요.", target: "approvals" as const }
-  ];
-  return <section className="notification-hub"><div className="notification-toolbar"><span>업무 흐름별 알림</span><button type="button">모두 읽음</button></div><div className="dashboard-list">{entries.map((entry) => <button key={entry.title} onClick={() => navigate(entry.target)}><span className={`menu-icon ${entry.tone}`}><Icon name={entry.icon} /></span><span><strong>{entry.title}</strong><small>{entry.body}</small></span><span className="unread-dot" aria-label="읽지 않음" /></button>)}</div></section>;
 }
 
 function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRoleContext; items: NavigationItem[]; onSignOut: () => Promise<void>; navigate: (section: MobileSection) => void }) {
@@ -104,7 +97,6 @@ function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRole
     <div className="dashboard-section-heading"><h2>계정과 앱</h2></div>
     <div className="dashboard-list">
       <button onClick={() => navigate("notifications")}><span className="menu-icon blue"><Icon name="bell" /></span><span><strong>알림</strong><small>근무와 승인 변경 안내</small></span><Icon name="chevron" /></button>
-      <button type="button"><span className="menu-icon green"><Icon name="settings" /></span><span><strong>앱 설정</strong><small>알림·업데이트·개인정보</small></span><Icon name="chevron" /></button>
       <a href="mailto:support@timefit.kr?subject=TimeFit%20모바일%20문의"><span className="menu-icon amber"><Icon name="help" /></span><span><strong>도움말·문의</strong><small>로그인과 QR 문제 해결</small></span><Icon name="chevron" /></a>
     </div>
     <button className="logout-button" onClick={() => void onSignOut()}><Icon name="logout" />로그아웃</button>
@@ -118,6 +110,7 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
   const [activeContext, setActiveContext] = useState<MobileRoleContext | null>(() => initialContext(contexts));
   const [section, setSection] = useState<MobileSection>("home");
   const [deniedSection, setDeniedSection] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const items = activeContext ? visibleNavigation(activeContext) : [];
   const primaryItems = activeContext ? primaryNavigation(activeContext, items) : [];
 
@@ -131,9 +124,26 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
   }, [contexts]);
 
   useEffect(() => {
+    const publicKey = process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY;
+    if (!publicKey || !canEnablePush(publicKey) || Notification.permission !== "granted") return;
+    void enableSchedulePush(getSupabaseBrowserClient(), publicKey).catch(() => undefined);
+  }, [userContext.profile?.id]);
+
+  useEffect(() => {
+    if (!activeContext || !canAccessSection(activeContext, "notifications")) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void loadNotifications(getSupabaseBrowserClient(), activeContext.organizationId)
+        .then((inbox) => { if (!cancelled) setUnreadCount(inbox.unreadCount); })
+        .catch(() => { if (!cancelled) setUnreadCount(null); });
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [activeContext]);
+
+  useEffect(() => {
     const syncHash = () => {
       if (!activeContext) return;
-      const requested = window.location.hash.replace("#", "") || "home";
+      const requested = (window.location.hash.replace("#", "").split("?")[0] || "home");
       if (canAccessSection(activeContext, requested)) { setDeniedSection(null); setSection(requested); }
       else { setDeniedSection(requested); setSection("home"); }
     };
@@ -148,15 +158,17 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
     const next = contexts.find((context) => context.id === contextId);
     if (!next) return;
     clearPrivateBrowserData();
+    setUnreadCount(null);
     window.localStorage.setItem(ACTIVE_CONTEXT_KEY, next.id);
     window.history.replaceState(null, "", "#home");
     setDeniedSection(null); setSection("home"); setActiveContext(next);
   }
 
-  function navigate(next: MobileSection) {
+  function navigate(next: MobileSection, path?: string) {
     if (!activeContext) return;
     if (!canAccessSection(activeContext, next)) { setDeniedSection(next); return; }
-    window.history.pushState(null, "", `#${next}`);
+    const destination=path?.startsWith(`/#${next}`)?path:`/#${next}`;
+    window.history.pushState(null, "", destination);
     setDeniedSection(null); setSection(next);
   }
 
@@ -175,9 +187,9 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
   return <main className="mobile-shell">
     <NetworkBanner />
     <header className="mobile-header">
-      <div className="mobile-identity"><span>{activeContext.organizationName}</span><strong>{section === "home" ? `안녕하세요, ${displayName}님` : page?.title ?? roleLabels[activeContext.role]}</strong></div>
+      <div className="mobile-identity"><span>{activeContext.organizationName}</span><strong>{displayName}님</strong></div>
       <div className="header-actions">
-        {section !== "notifications" && <button className="header-icon-button" aria-label="알림 열기" onClick={() => navigate("notifications")}><Icon name="bell" /><span className="header-alert-dot" /></button>}
+        {section !== "notifications" && <button className="header-icon-button" aria-label={unreadCount ? `읽지 않은 알림 ${unreadCount}개` : "알림 열기"} onClick={() => navigate("notifications")}><Icon name="bell" />{Boolean(unreadCount) && <span className="header-alert-dot" />}</button>}
         {contexts.length > 1 ? <label className="context-select"><span className="sr-only">활성 역할</span><select aria-label="활성 역할" value={activeContext.id} onChange={(event) => switchContext(event.target.value)}>{contexts.map((context) => <option key={context.id} value={context.id}>{roleLabels[context.role]}</option>)}</select></label> : <span className="role-chip">{roleLabels[activeContext.role]}</span>}
       </div>
     </header>
@@ -189,15 +201,15 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
         : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />
         : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} />
-        : section === "notifications" ? <NotificationHub isEmployee={isEmployee} navigate={navigate} />
+        : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate} onUnreadCountChange={setUnreadCount} />
         : section === "more" ? <MoreMenu context={activeContext} items={items} onSignOut={onSignOut} navigate={navigate} />
         : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label}</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}
     </section>}
-    <nav className={`bottom-nav ${isEmployee ? "employee-nav" : "manager-nav"}`} aria-label="주요 메뉴">
-      {primaryItems.map((item) => <button key={item.section} className={`${section === item.section && !deniedSection ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={section === item.section && !deniedSection ? "page" : undefined}>
+    <nav className={`bottom-nav ${isEmployee ? "employee-nav" : "manager-nav"}`} style={{ "--nav-items": primaryItems.length } as CSSProperties} aria-label="주요 메뉴">
+      {primaryItems.map((item) => { const selected = (section === item.section || (isEmployee && section === "notifications" && item.section === "more")) && !deniedSection; return <button key={item.section} className={`${selected ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={selected ? "page" : undefined}>
         {item.section === "attendance" && isEmployee ? <span className="qr-nav-icon"><Icon name="scan" /></span> : <Icon name={sectionIcons[item.section] ?? "menu"} />}
         <span>{item.section === "attendance" && isEmployee ? "QR" : item.label}</span>
-      </button>)}
+      </button>;})}
     </nav>
   </main>;
 }
