@@ -1,4 +1,4 @@
-const BUILD_ID="a0a16da4a466";
+const BUILD_ID="79029c3e82e0";
 const CACHE_PREFIX="timefit-shell-";
 const STATIC_CACHE=`${CACHE_PREFIX}${BUILD_ID}`;
 const META_CACHE="timefit-shell-meta";
