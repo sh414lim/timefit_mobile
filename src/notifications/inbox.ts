@@ -5,3 +5,4 @@ export async function loadNotifications(client:SupabaseClient,organizationId:str
 export async function readNotification(client:SupabaseClient,id:string){const{data,error}=await client.rpc("timefit_user_mobile_read_notification",{p_notification_id:id});if(error)throw error;return String(data||"/#notifications");}
 export function safeNotificationPath(path:string){return /^\/#(notifications|schedule|attendance|requests|approvals)(?:\?.*)?$/.test(path)?path:"/#notifications";}
 export function safeNotificationSection(path:string){const match=/^\/#(notifications|schedule|attendance|requests|approvals)(?:\?.*)?$/.exec(safeNotificationPath(path));return match?.[1]??"notifications";}
+export function notificationTargetId(path:string){const query=safeNotificationPath(path).split("?")[1];return query?new URLSearchParams(query).get("id"):null;}
