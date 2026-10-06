@@ -11,6 +11,7 @@ import "./mob08-navigation.css";
 import "./qr-attendance.css";
 import "./mob09.css";
 import "./mob10.css";
+import "./uiux01.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },

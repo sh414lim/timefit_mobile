@@ -12,13 +12,13 @@ describe("mobile role contexts", () => {
   it("builds an employee context with employee navigation", () => {
     const [context] = deriveMobileContexts(employee);
     expect(context.role).toBe("employee");
-    expect(visibleNavigation(context).map((item) => item.label)).toEqual(["홈", "스케줄", "출퇴근", "요청", "전체"]);
+    expect(visibleNavigation(context).map((item) => item.label)).toEqual(["홈", "스케줄", "출퇴근", "요청", "알림", "전체"]);
   });
 
   it("maps executive chef to operations lead and filters unauthorized tabs", () => {
     const contexts = deriveMobileContexts({ ...employee, managementAccount: { id: "manager", staff_id: "staff", role_code: "executive_chef", status: "active", permissions: ["employee.view"], categoryScopes: [] } });
     const manager = contexts.find((context) => context.role === "operations_lead")!;
-    expect(visibleNavigation(manager).map((item) => item.section)).toEqual(["home", "employees", "more"]);
+    expect(visibleNavigation(manager).map((item) => item.section)).toEqual(["home", "employees", "notifications", "more"]);
     expect(canAccessSection(manager, "approvals")).toBe(false);
   });
 

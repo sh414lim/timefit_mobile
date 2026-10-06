@@ -17,13 +17,15 @@ export type NavigationItem = { section: MobileSection; label: string; requiredAn
 const navigation: Record<MobileRole, NavigationItem[]> = {
   employee: [
     { section: "home", label: "홈" }, { section: "schedule", label: "스케줄" },
-    { section: "attendance", label: "출퇴근" }, { section: "requests", label: "요청" }, { section: "more", label: "전체" }
+    { section: "attendance", label: "출퇴근" }, { section: "requests", label: "요청" },
+    { section: "notifications", label: "알림" }, { section: "more", label: "전체" }
   ],
   sub_manager: [
     { section: "home", label: "홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view"] },
     { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
+    { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
   operations_lead: [
@@ -31,6 +33,7 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
+    { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
   owner: [
