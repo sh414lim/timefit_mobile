@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserContext } from "@/auth/user-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
-import { canEnablePush, enableSchedulePush } from "@/notifications/push";
+import { canEnablePush, enableSchedulePush, getPushStatus, type PushStatus } from "@/notifications/push";
 import { acknowledgeSchedule, addDays, cacheKey, dateKeyInTimeZone, leaveConflictsWithSchedule, leaveCovers, loadMobileScheduleRange, monthRange, scheduleMinutes, startOfWeek, type MobileScheduleRange, type ScheduleItem } from "@/schedule/mobile-schedule";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
 import { classifyRequestFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
@@ -25,7 +25,7 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [pushState, setPushState] = useState<"idle"|"saving"|"enabled"|"denied">("idle");
+  const [pushState, setPushState] = useState<PushStatus | "checking" | "saving" | "error">("checking");
   const scheduleRef = useRef<MobileScheduleRange | null>(null);
   const range = useMemo(() => monthRange(anchor), [anchor]);
   const userId = userContext.profile?.id ?? "anonymous";
@@ -59,6 +59,14 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
     return () => window.clearTimeout(timer);
   }, [context.organizationId, fetchRange, range.from, range.to, userId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void getPushStatus(process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY)
+      .then((status) => { if (!cancelled) setPushState(status); })
+      .catch(() => { if (!cancelled) setPushState("error"); });
+    return () => { cancelled = true; };
+  }, []);
+
   const days = useMemo(() => {
     const from = mode === "week" ? startOfWeek(selected) : range.from;
     const to = mode === "week" ? addDays(from, 6) : range.to;
@@ -89,7 +97,7 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
     if (!publicKey) return;
     setPushState("saving");
     try { await enableSchedulePush(getSupabaseBrowserClient(), publicKey); setPushState("enabled"); }
-    catch { setPushState("denied"); }
+    catch (nextError) { setPushState(nextError instanceof Error && nextError.message === "PUSH_PERMISSION_DENIED" ? "denied" : "error"); }
   }
 
   if (loading && !schedule) return <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>스케줄을 불러오고 있어요</h2></section>;
@@ -108,7 +116,7 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
       {selectedItems.map((item)=><div className={`event-card ${item.is_day_off?"day-off":""} ${item.changed?"changed-event":""}`} key={item.id}>{item.is_day_off?<><span>확정 일정</span><strong>휴무</strong><p>근무가 없는 휴무일이에요.</p></>:<><span>{item.shift_name}{item.changed&&" · 변경됨"}</span><strong>{shortTime(item.starts_at)} – {shortTime(item.ends_at)}</strong><p>휴게 {item.break_minutes}분 · 예정 근무 {duration(scheduleMinutes(item))}</p>{item.changed&&item.previous&&<div className="change-summary">이전 {item.previous.is_day_off?"휴무":`${shortTime(item.previous.starts_at)} – ${shortTime(item.previous.ends_at)}`} → 현재 {shortTime(item.starts_at)} – {shortTime(item.ends_at)}</div>}<small>마지막 변경 {new Intl.DateTimeFormat("ko-KR", { dateStyle:"short", timeStyle:"short", timeZone:schedule?.timezone??"Asia/Seoul" }).format(new Date(item.updated_at))}</small>{item.changed&&<button className="ack-button" onClick={()=>void acknowledge(item)}>변경 확인</button>}</>}</div>)}
       {!selectedItems.length&&!selectedLeaves.length&&<div className="empty-day"><strong>등록된 일정이 없어요</strong><p>휴무로 확정된 날짜는 ‘휴무’로 별도 표시됩니다.</p></div>}
     </article>
-    {typeof window!=="undefined"&&canEnablePush(process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY)&&<div className="push-opt-in"><div><strong>일정 변경 알림</strong><span>{pushState==="enabled"?"이 기기에서 알림을 받을게요.":pushState==="denied"?"브라우저 알림 권한을 확인해 주세요.":"확정·변경된 일정을 바로 알려드려요."}</span></div><button onClick={()=>void enablePush()} disabled={pushState==="saving"||pushState==="enabled"}>{pushState==="saving"?"설정 중":pushState==="enabled"?"설정됨":"알림 받기"}</button></div>}
+    {typeof window!=="undefined"&&canEnablePush(process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY)&&<div className={`push-opt-in ${pushState}`}><div><strong>일정 변경 알림</strong><span>{pushState==="enabled"?"이 기기에서 알림을 받을게요.":pushState==="denied"?"브라우저 설정에서 TimeFit 알림을 허용해 주세요.":pushState==="error"?"알림 연결에 실패했어요. 잠시 후 다시 시도해 주세요.":"확정·변경된 일정을 바로 알려드려요."}</span></div><button onClick={()=>void enablePush()} disabled={pushState==="saving"||pushState==="enabled"||pushState==="checking"||pushState==="denied"}>{pushState==="saving"||pushState==="checking"?"확인 중":pushState==="enabled"?"설정됨":pushState==="denied"?"권한 필요":pushState==="error"?"다시 시도":"알림 받기"}</button></div>}
     {schedule && <p className="schedule-sync">사업장 시간대 {schedule.timezone} · 마지막 동기화 {new Intl.DateTimeFormat("ko-KR",{hour:"2-digit",minute:"2-digit",timeZone:schedule.timezone}).format(new Date(schedule.serverTime))}</p>}
   </section>;
 }

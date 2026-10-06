@@ -14,6 +14,7 @@ import "./alt01.css";
 import "./alt02.css";
 import "./mob10.css";
 import "./uiux01.css";
+import "./uiux02.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },

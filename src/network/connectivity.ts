@@ -3,6 +3,7 @@ export type ConnectivityStatus = "unknown" | "online" | "offline" | "degraded" |
 export type ConnectivitySnapshot = { status: ConnectivityStatus; lastSuccessfulAt: string | null };
 
 let snapshot: ConnectivitySnapshot = { status: "unknown", lastSuccessfulAt: null };
+const serverSnapshot: ConnectivitySnapshot = { status: "unknown", lastSuccessfulAt: null };
 const listeners = new Set<() => void>();
 
 function publish(next: ConnectivitySnapshot) {
@@ -12,8 +13,8 @@ function publish(next: ConnectivitySnapshot) {
 }
 
 export function getConnectivitySnapshot() { return snapshot; }
-export function getServerConnectivitySnapshot(): ConnectivitySnapshot { return { status: "unknown", lastSuccessfulAt: null }; }
-export function subscribeConnectivity(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }
+export function getServerConnectivitySnapshot(): ConnectivitySnapshot { return serverSnapshot; }
+export function subscribeConnectivity(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
 export function reportNetworkSuccess(at = new Date().toISOString()) { publish({ status: "online", lastSuccessfulAt: at }); }
 export function reportNetworkFailure(status: "offline" | "degraded") { publish({ ...snapshot, status }); }
 export function reportNetworkRecovering() { publish({ ...snapshot, status: "recovering" }); }

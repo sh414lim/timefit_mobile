@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
-import { getConnectivitySnapshot, getServerConnectivitySnapshot, reportNetworkRecovering, setBrowserConnectivity, subscribeConnectivity } from "@/network/connectivity";
+import { useEffect, useState } from "react";
+import { getConnectivitySnapshot, reportNetworkRecovering, setBrowserConnectivity, subscribeConnectivity, type ConnectivitySnapshot } from "@/network/connectivity";
 
 function timeLabel(value: string | null) { return value ? new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : null; }
 
 export function NetworkBanner() {
-  const state = useSyncExternalStore(subscribeConnectivity, getConnectivitySnapshot, getServerConnectivitySnapshot);
+  const [state, setState] = useState<ConnectivitySnapshot>({ status: "unknown", lastSuccessfulAt: null });
+  useEffect(() => {
+    const refresh = () => setState(getConnectivitySnapshot());
+    refresh();
+    return subscribeConnectivity(refresh);
+  }, []);
   useEffect(() => {
     const offline = () => setBrowserConnectivity(false);
     const online = () => { setBrowserConnectivity(true); reportNetworkRecovering(); };

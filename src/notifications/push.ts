@@ -2,8 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 function withTimeout<T>(promise: Promise<T>, milliseconds = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error("PUSH_REQUEST_TIMEOUT")), milliseconds);
-    promise.then((value) => { window.clearTimeout(timer); resolve(value); }, (error) => { window.clearTimeout(timer); reject(error); });
+    const timer = globalThis.setTimeout(() => reject(new Error("PUSH_REQUEST_TIMEOUT")), milliseconds);
+    promise.then((value) => { globalThis.clearTimeout(timer); resolve(value); }, (error) => { globalThis.clearTimeout(timer); reject(error); });
   });
 }
 
@@ -20,23 +20,44 @@ function key(subscription: PushSubscription, name: "p256dh" | "auth"): string {
 }
 
 export function canEnablePush(publicKey?: string): boolean {
-  return Boolean(publicKey && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
+  return Boolean(publicKey && typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
 }
 
-export async function enableSchedulePush(client: SupabaseClient, publicKey: string): Promise<void> {
-  const permission = Notification.permission === "default" ? await withTimeout(Notification.requestPermission()) : Notification.permission;
-  if (permission !== "granted") throw new Error("PUSH_PERMISSION_DENIED");
+export type PushStatus = "unsupported" | "prompt" | "denied" | "enabled" | "available";
+
+export async function getPushStatus(publicKey?: string): Promise<PushStatus> {
+  if (!canEnablePush(publicKey)) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  if (Notification.permission === "default") return "prompt";
   const registration = await withTimeout(navigator.serviceWorker.ready);
-  const existing = await withTimeout(registration.pushManager.getSubscription());
-  const subscription = existing ?? await withTimeout(registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) }));
-  const { error } = await client.rpc("timefit_user_mobile_register_push", {
-    p_endpoint: subscription.endpoint,
-    p_p256dh: key(subscription, "p256dh"),
-    p_auth_secret: key(subscription, "auth"),
-    p_user_agent: navigator.userAgent,
-    p_expiration_time: subscription.expirationTime ? new Date(subscription.expirationTime).toISOString() : null
-  });
-  if (error) { await subscription.unsubscribe(); throw error; }
+  return await withTimeout(registration.pushManager.getSubscription()) ? "enabled" : "available";
+}
+
+let registrationInFlight: Promise<void> | null = null;
+
+export async function enableSchedulePush(client: SupabaseClient, publicKey: string): Promise<void> {
+  if (registrationInFlight) return registrationInFlight;
+  registrationInFlight = (async () => {
+    if (!canEnablePush(publicKey)) throw new Error("PUSH_UNSUPPORTED");
+    const permission = Notification.permission === "default" ? await withTimeout(Notification.requestPermission()) : Notification.permission;
+    if (permission !== "granted") throw new Error("PUSH_PERMISSION_DENIED");
+    const registration = await withTimeout(navigator.serviceWorker.ready);
+    const existing = await withTimeout(registration.pushManager.getSubscription());
+    const subscription = existing ?? await withTimeout(registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) }));
+    const { error } = await client.rpc("timefit_user_mobile_register_push", {
+      p_endpoint: subscription.endpoint,
+      p_p256dh: key(subscription, "p256dh"),
+      p_auth_secret: key(subscription, "auth"),
+      p_user_agent: navigator.userAgent,
+      p_expiration_time: subscription.expirationTime ? new Date(subscription.expirationTime).toISOString() : null
+    });
+    if (error) {
+      if (!existing) await subscription.unsubscribe().catch(() => undefined);
+      throw error;
+    }
+  })();
+  try { await registrationInFlight; }
+  finally { registrationInFlight = null; }
 }
 
 export async function revokePushSubscription(client: SupabaseClient): Promise<void> {
