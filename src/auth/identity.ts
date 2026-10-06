@@ -4,7 +4,7 @@ export type LoginIdentity =
   | { kind: "employee-id"; value: string };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const EMPLOYEE_ID_PATTERN = /^buttervilla-\d{4}$/i;
+const EMPLOYEE_ID_PATTERN = /^buttervilla\d{4}$/i;
 
 export function normalizeKoreanPhone(value: string): string | null {
   const digits = value.replace(/\D/g, "");
