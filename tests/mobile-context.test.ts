@@ -12,7 +12,7 @@ describe("mobile role contexts", () => {
   it("builds an employee context with employee navigation", () => {
     const [context] = deriveMobileContexts(employee);
     expect(context.role).toBe("employee");
-    expect(visibleNavigation(context).map((item) => item.label)).toEqual(["홈", "스케줄", "출퇴근", "요청", "전체"]);
+    expect(visibleNavigation(context).map((item) => item.label)).toEqual(["홈", "스케줄", "출퇴근", "요청", "알림", "전체"]);
   });
 
   it("maps executive chef to operations lead and filters unauthorized tabs", () => {
