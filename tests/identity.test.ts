@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maskIdentity, normalizeKoreanPhone, parseLoginIdentity } from "../src/auth/identity";
+import { loginCredentials, maskIdentity, normalizeKoreanPhone, parseLoginIdentity } from "../src/auth/identity";
 
 describe("mobile login identity", () => {
   it.each([
@@ -12,15 +12,21 @@ describe("mobile login identity", () => {
     expect(parseLoginIdentity(" Manager@TimeFit.KR ")).toEqual({ kind: "email", value: "manager@timefit.kr" });
   });
 
-  it("rejects names, partial phone numbers, and employee ids", () => {
+  it("accepts a Buttervilla employee id and maps it to the private auth email", () => {
+    const identity = parseLoginIdentity(" ButterVilla-5678 ");
+    expect(identity).toEqual({ kind: "employee-id", value: "buttervilla-5678" });
+    expect(loginCredentials(identity!, "password-value")).toEqual({ email: "buttervilla-5678@accounts.timefit.local", password: "password-value" });
+  });
+
+  it("rejects names, partial phone numbers, and malformed employee ids", () => {
     expect(parseLoginIdentity("홍길동")).toBeNull();
     expect(parseLoginIdentity("12345678")).toBeNull();
-    expect(parseLoginIdentity("TF1234-E0027")).toBeNull();
+    expect(parseLoginIdentity("buttervilla-12")).toBeNull();
   });
 
   it("masks identifiers for display", () => {
     expect(maskIdentity({ kind: "phone", value: "+821012345678" })).toBe("010-****-5678");
     expect(maskIdentity({ kind: "email", value: "manager@timefit.kr" })).toBe("ma***@timefit.kr");
+    expect(maskIdentity({ kind: "employee-id", value: "buttervilla-5678" })).toBe("buttervilla-5678");
   });
 });
-
