@@ -33,11 +33,18 @@ class _RoleHomeShellState extends State<RoleHomeShell> {
             if (organization.can('employee.view') ||
                 organization.can('employee.manage'))
               const _NavItem('직원', Icons.groups_rounded),
+            if (organization.can('attendance.view') ||
+                organization.can('attendance.manage') ||
+                organization.can('attendance.review_correction'))
+              const _NavItem('출퇴근', Icons.fingerprint_rounded),
             if (organization.can('schedule.view') ||
-                organization.can('schedule.manage'))
+                organization.can('schedule.manage') ||
+                organization.can('schedule.approve'))
               const _NavItem('스케줄', Icons.calendar_month_rounded),
             if (organization.can('leave.view') ||
-                organization.can('leave.review'))
+                organization.can('leave.review') ||
+                organization.can('schedule.approve') ||
+                organization.can('attendance.review_correction'))
               const _NavItem('승인', Icons.task_alt_rounded),
             const _NavItem('전체', Icons.menu_rounded),
           ]
