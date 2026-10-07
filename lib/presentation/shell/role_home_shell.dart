@@ -4,6 +4,12 @@ import '../../core/app/app_metadata.dart';
 import '../../core/theme/timefit_theme.dart';
 import '../../domain/app_session.dart';
 
+class _NavItem {
+  const _NavItem(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
 class RoleHomeShell extends StatefulWidget {
   const RoleHomeShell({super.key, required this.controller});
   final SessionController controller;
@@ -19,39 +25,45 @@ class _RoleHomeShellState extends State<RoleHomeShell> {
     if (organization == null) {
       return _NoOrganization(controller: widget.controller);
     }
-    final manager = organization.role != MemberRole.employee;
-    final labels = manager
-        ? const ['홈', '직원', '스케줄', '승인', '전체']
-        : const ['홈', '스케줄', '출퇴근', '요청', '전체'];
-    final icons = manager
-        ? const [
-            Icons.home_rounded,
-            Icons.groups_rounded,
-            Icons.calendar_month_rounded,
-            Icons.task_alt_rounded,
-            Icons.menu_rounded,
+    final manager = widget.controller.isManagerMode;
+    final items = manager
+        ? <_NavItem>[
+            if (organization.can('dashboard.view'))
+              const _NavItem('홈', Icons.home_rounded),
+            if (organization.can('employee.view') ||
+                organization.can('employee.manage'))
+              const _NavItem('직원', Icons.groups_rounded),
+            if (organization.can('schedule.view') ||
+                organization.can('schedule.manage'))
+              const _NavItem('스케줄', Icons.calendar_month_rounded),
+            if (organization.can('leave.view') ||
+                organization.can('leave.review'))
+              const _NavItem('승인', Icons.task_alt_rounded),
+            const _NavItem('전체', Icons.menu_rounded),
           ]
-        : const [
-            Icons.home_rounded,
-            Icons.calendar_month_rounded,
-            Icons.fingerprint_rounded,
-            Icons.edit_calendar_rounded,
-            Icons.menu_rounded,
+        : const <_NavItem>[
+            _NavItem('홈', Icons.home_rounded),
+            _NavItem('스케줄', Icons.calendar_month_rounded),
+            _NavItem('출퇴근', Icons.fingerprint_rounded),
+            _NavItem('요청', Icons.edit_calendar_rounded),
+            _NavItem('전체', Icons.menu_rounded),
           ];
+    final activeIndex = index < items.length ? index : 0;
+    final activeItem = items[activeIndex];
     return Scaffold(
-      body: index == 0
+      body: activeItem.label == '홈'
           ? _RoleHome(controller: widget.controller, organization: organization)
-          : index == 4
+          : activeItem.label == '전체'
           ? _MorePage(controller: widget.controller)
-          : _PlaceholderPage(title: labels[index]),
+          : _PlaceholderPage(title: activeItem.label),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
+        selectedIndex: activeIndex,
         onDestinationSelected: (value) => setState(() => index = value),
         destinations: List.generate(
-          labels.length,
+          items.length,
           (item) => NavigationDestination(
-            icon: Icon(icons[item]),
-            label: labels[item],
+            icon: Icon(items[item].icon),
+            label: items[item].label,
           ),
         ),
       ),
@@ -65,7 +77,7 @@ class _RoleHome extends StatelessWidget {
   final OrganizationContext organization;
   @override
   Widget build(BuildContext context) {
-    final manager = organization.role != MemberRole.employee;
+    final manager = controller.isManagerMode;
     final name = organization.displayName?.trim().isNotEmpty == true
         ? '${organization.displayName}님'
         : organization.role.label;
@@ -292,6 +304,37 @@ class _MorePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
+        if (controller.canUseManagerMode) ...[
+          Text('사용 모드', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: SegmentedButton<WorkspaceMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: WorkspaceMode.employee,
+                    icon: Icon(Icons.badge_outlined),
+                    label: Text('직원 모드'),
+                  ),
+                  ButtonSegment(
+                    value: WorkspaceMode.manager,
+                    icon: Icon(Icons.admin_panel_settings_outlined),
+                    label: Text('관리자 모드'),
+                  ),
+                ],
+                selected: {
+                  controller.isManagerMode
+                      ? WorkspaceMode.manager
+                      : WorkspaceMode.employee,
+                },
+                onSelectionChanged: (selection) =>
+                    controller.selectWorkspaceMode(selection.first),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
         FutureBuilder<AppMetadata>(
           future: AppMetadata.load(),
           builder: (context, snapshot) => ListTile(

@@ -6,15 +6,24 @@ import '../domain/session_repository.dart';
 
 enum SessionStatus { loading, signedOut, signedIn, failure }
 
+enum WorkspaceMode { employee, manager }
+
 class SessionController extends ChangeNotifier {
   SessionController(this._repository);
   static const organizationPreferenceKey = 'timefit.selected_organization_id';
+  static const workspaceModePreferenceKey = 'timefit.workspace_mode';
   final SessionRepository _repository;
 
   SessionStatus status = SessionStatus.loading;
   AppSession? session;
   OrganizationContext? currentOrganization;
   String? errorMessage;
+  WorkspaceMode workspaceMode = WorkspaceMode.employee;
+
+  bool get canUseManagerMode =>
+      currentOrganization?.hasManagementAccess ?? false;
+  bool get isManagerMode =>
+      workspaceMode == WorkspaceMode.manager && canUseManagerMode;
 
   Future<void> initialize() async {
     status = SessionStatus.loading;
@@ -50,27 +59,43 @@ class SessionController extends ChangeNotifier {
 
   Future<void> selectOrganization(OrganizationContext organization) async {
     currentOrganization = organization;
-    notifyListeners();
     final preferences = await SharedPreferences.getInstance();
+    final storedMode = preferences.getString(workspaceModePreferenceKey);
+    workspaceMode = organization.role != MemberRole.employee
+        ? WorkspaceMode.manager
+        : organization.hasManagementAccess &&
+              storedMode == WorkspaceMode.manager.name
+        ? WorkspaceMode.manager
+        : WorkspaceMode.employee;
+    notifyListeners();
     await preferences.setString(
       organizationPreferenceKey,
       organization.organizationId,
     );
   }
 
+  Future<void> selectWorkspaceMode(WorkspaceMode mode) async {
+    workspaceMode = mode == WorkspaceMode.manager && !canUseManagerMode
+        ? WorkspaceMode.employee
+        : mode;
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(workspaceModePreferenceKey, workspaceMode.name);
+  }
+
   Future<void> signOut() async {
     await _repository.signOut();
     session = null;
     currentOrganization = null;
+    workspaceMode = WorkspaceMode.employee;
     status = SessionStatus.signedOut;
     notifyListeners();
   }
 
   Future<void> _acceptSession(AppSession next) async {
     session = next;
-    final selectedId = (await SharedPreferences.getInstance()).getString(
-      organizationPreferenceKey,
-    );
+    final preferences = await SharedPreferences.getInstance();
+    final selectedId = preferences.getString(organizationPreferenceKey);
     OrganizationContext? selected;
     for (final organization in next.organizations) {
       if (organization.organizationId == selectedId) selected = organization;
@@ -78,6 +103,13 @@ class SessionController extends ChangeNotifier {
     currentOrganization =
         selected ??
         (next.organizations.isEmpty ? null : next.organizations.first);
+    final storedMode = preferences.getString(workspaceModePreferenceKey);
+    workspaceMode = currentOrganization?.role != MemberRole.employee
+        ? WorkspaceMode.manager
+        : storedMode == WorkspaceMode.manager.name &&
+              (currentOrganization?.hasManagementAccess ?? false)
+        ? WorkspaceMode.manager
+        : WorkspaceMode.employee;
     status = SessionStatus.signedIn;
   }
 }

@@ -15,6 +15,13 @@ void main() {
     organizationName: '두 번째 사업장',
     role: MemberRole.manager,
   );
+  const delegated = OrganizationContext(
+    organizationId: 'delegated',
+    organizationName: '권한 위임 사업장',
+    role: MemberRole.employee,
+    managementRoleCode: 'store_manager',
+    managementPermissions: {'dashboard.view', 'schedule.manage'},
+  );
   const session = AppSession(
     userId: 'user',
     email: 'user@time.fit',
@@ -39,6 +46,66 @@ void main() {
     final controller = SessionController(_FakeRepository(session));
     await controller.initialize();
     expect(controller.currentOrganization?.organizationId, 'first');
+  });
+
+  test('restores manager mode for an employee with delegated access', () async {
+    SharedPreferences.setMockInitialValues({
+      SessionController.organizationPreferenceKey: 'delegated',
+      SessionController.workspaceModePreferenceKey: WorkspaceMode.manager.name,
+    });
+    const delegatedSession = AppSession(
+      userId: 'user',
+      email: 'user@time.fit',
+      organizations: [delegated],
+    );
+    final controller = SessionController(_FakeRepository(delegatedSession));
+
+    await controller.initialize();
+
+    expect(controller.canUseManagerMode, isTrue);
+    expect(controller.isManagerMode, isTrue);
+    expect(controller.currentOrganization?.can('schedule.manage'), isTrue);
+    expect(controller.currentOrganization?.can('employee.manage'), isFalse);
+  });
+
+  test(
+    'falls back to employee mode after delegated access is revoked',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        SessionController.workspaceModePreferenceKey:
+            WorkspaceMode.manager.name,
+      });
+      final controller = SessionController(_FakeRepository(session));
+
+      await controller.initialize();
+      await controller.selectWorkspaceMode(WorkspaceMode.manager);
+
+      expect(controller.isManagerMode, isFalse);
+      expect(controller.workspaceMode, WorkspaceMode.employee);
+    },
+  );
+
+  test('selecting a native manager organization opens manager mode', () async {
+    final controller = SessionController(_FakeRepository(session));
+    await controller.initialize();
+
+    await controller.selectOrganization(second);
+
+    expect(controller.isManagerMode, isTrue);
+  });
+
+  test('parses scoped management access from the mobile bootstrap', () {
+    final organization = OrganizationContext.fromJson({
+      'organization_id': 'buttervilla',
+      'organization_name': '버터빌라',
+      'role': 'employee',
+      'management_role_code': 'store_manager',
+      'management_permissions': ['dashboard.view', 'leave.review'],
+    });
+
+    expect(organization.hasManagementAccess, isTrue);
+    expect(organization.can('leave.review'), isTrue);
+    expect(organization.can('employee.manage'), isFalse);
   });
 }
 
