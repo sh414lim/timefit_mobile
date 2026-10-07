@@ -18,6 +18,6 @@ export async function loadUserContext(client: SupabaseClient): Promise<UserConte
 export function hasActiveWorkScope(context: UserContext): boolean {
   if (!context.membership) return false;
   if (!context.managementAccount) return true;
-  return context.managementAccount.status === "active";
+  if (context.managementAccount.status === "active") return true;
+  return context.membership.role === "employee" && Boolean(context.managementAccount.staff_id);
 }
-

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { loginCredentials, parseLoginIdentity } from "@/auth/identity";
 import { clearPrivateBrowserData, reconcileSessionUser } from "@/auth/session-storage";
@@ -25,8 +25,9 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const refreshingContext = useRef(false);
 
-  const resolveSession = useCallback(async (session: Session | null) => {
+  const resolveSession = useCallback(async (session: Session | null, background = false) => {
     reconcileSessionUser(session?.user.id ?? null);
     if (!session) { setContext(null); setScreen("signed-out"); return; }
     try {
@@ -35,9 +36,21 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
       setScreen(hasActiveWorkScope(nextContext) ? "signed-in" : "unlinked");
     } catch {
       setMessage("계정 정보를 확인하지 못했습니다. 네트워크 연결 후 다시 시도해 주세요.");
-      setScreen("error");
+      if (!background) setScreen("error");
     }
   }, [supabaseKey, supabaseUrl]);
+
+  const refreshActiveContext = useCallback(async () => {
+    if (refreshingContext.current || document.visibilityState === "hidden") return;
+    refreshingContext.current = true;
+    try {
+      const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
+      const { data } = await client.auth.getSession();
+      await resolveSession(data.session, true);
+    } finally {
+      refreshingContext.current = false;
+    }
+  }, [resolveSession, supabaseKey, supabaseUrl]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -49,10 +62,19 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
       const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
       void client.auth.getSession().then(({ data }) => resolveSession(data.session));
       const { data } = client.auth.onAuthStateChange((_event, session) => { void resolveSession(session); });
+      const handleVisibility = () => { if (document.visibilityState === "visible") void refreshActiveContext(); };
+      window.addEventListener("focus", refreshActiveContext);
+      document.addEventListener("visibilitychange", handleVisibility);
       unsubscribe = () => data.subscription.unsubscribe();
+      const unsubscribeLifecycle = unsubscribe;
+      unsubscribe = () => {
+        unsubscribeLifecycle();
+        window.removeEventListener("focus", refreshActiveContext);
+        document.removeEventListener("visibilitychange", handleVisibility);
+      };
     }, 0);
     return () => { window.clearTimeout(timer); unsubscribe(); };
-  }, [resolveSession, supabaseKey, supabaseUrl]);
+  }, [refreshActiveContext, resolveSession, supabaseKey, supabaseUrl]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
