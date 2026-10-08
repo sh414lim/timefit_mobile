@@ -103,3 +103,12 @@ export async function acknowledgeSchedule(client: SupabaseClient, scheduleId: st
 export function cacheKey(userId: string, organizationId: string, from: string, to: string): string {
   return `timefit:schedule:v1:${userId}:${organizationId}:${from}:${to}`;
 }
+
+export function scheduleTargetFromHash(hash: string): { date: string; id: string | null } | null {
+  const query = hash.split("?")[1];
+  if (!query) return null;
+  const params = new URLSearchParams(query);
+  const date = params.get("date") ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return { date, id: params.get("id") };
+}

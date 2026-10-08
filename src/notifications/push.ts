@@ -24,6 +24,15 @@ export function canEnablePush(publicKey?: string): boolean {
 }
 
 export type PushStatus = "unsupported" | "prompt" | "denied" | "enabled" | "available";
+export type PushUiState = PushStatus | "checking" | "saving" | "error";
+
+export function pushStatusDescription(status: PushUiState, isManager: boolean) {
+  if (status === "enabled") return isManager ? "나에게 배정된 확정·변경 일정을 이 기기에서 알려드려요." : "확정·변경된 일정을 이 기기에서 알려드려요.";
+  if (status === "denied") return "브라우저 설정에서 TimeFit 알림 권한을 허용해 주세요.";
+  if (status === "unsupported") return "iPhone은 홈 화면에 설치한 앱에서, Android는 Chrome에서 알림을 사용할 수 있어요.";
+  if (status === "error") return "알림 연결에 실패했어요. 네트워크 연결 후 다시 시도해 주세요.";
+  return isManager ? "관리자에게 배정된 스케줄 변경을 놓치지 않도록 알려드려요." : "스케줄 변경을 놓치지 않도록 알려드려요.";
+}
 
 export async function getPushStatus(publicKey?: string): Promise<PushStatus> {
   if (!canEnablePush(publicKey)) return "unsupported";
