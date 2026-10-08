@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UpdateCoordinator } from "@/pwa/update-coordinator";
 import { getUpdateSafetySnapshot, subscribeUpdateSafety } from "@/pwa/update-safety";
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const INITIAL_UPDATE_SAFETY = { safe: true, reasons: [] as string[] };
 
 export function PwaRuntime() {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -12,7 +13,13 @@ export function PwaRuntime() {
   const [blockedReasons, setBlockedReasons] = useState<string[]>([]);
   const refreshing = useRef(false);
   const coordinatorRef = useRef<UpdateCoordinator | null>(null);
-  const safety = useSyncExternalStore(subscribeUpdateSafety, getUpdateSafetySnapshot, () => ({ safe: true, reasons: [] }));
+  const [safety, setSafety] = useState(INITIAL_UPDATE_SAFETY);
+
+  useEffect(() => {
+    const refresh = () => setSafety(getUpdateSafetySnapshot());
+    refresh();
+    return subscribeUpdateSafety(refresh);
+  }, []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;

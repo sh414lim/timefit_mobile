@@ -25,7 +25,7 @@ export function getUpdateSafetySnapshot(): UpdateSafetySnapshot {
 
 export function subscribeUpdateSafety(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => { listeners.delete(listener); };
 }
 
 export function useUpdateSafetyBlocker(id: string, reason: string, active: boolean): void {

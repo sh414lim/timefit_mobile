@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { clearPrivateBrowserData } from "@/auth/session-storage";
 import type { UserContext } from "@/auth/user-context";
-import { EmployeeSchedule } from "@/components/employee-schedule";
-import { EmployeeLeave } from "@/components/employee-leave";
-import { ManagerApprovals } from "@/components/manager-approvals";
-import { ManagerAttendance } from "@/components/manager-attendance";
-import { EmployeeAttendance } from "@/components/employee-attendance";
 import { NetworkBanner } from "@/components/network-banner";
-import { NotificationInbox } from "@/components/notification-inbox";
 import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection, type NavigationItem } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { loadNotifications } from "@/notifications/inbox";
 import { canEnablePush, enableSchedulePush } from "@/notifications/push";
+
+const FeatureLoading = () => <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>화면을 준비하고 있어요</h2></section>;
+const EmployeeSchedule = dynamic(() => import("@/components/employee-schedule").then((module) => module.EmployeeSchedule), { loading: FeatureLoading });
+const EmployeeLeave = dynamic(() => import("@/components/employee-leave").then((module) => module.EmployeeLeave), { loading: FeatureLoading });
+const ManagerApprovals = dynamic(() => import("@/components/manager-approvals").then((module) => module.ManagerApprovals), { loading: FeatureLoading });
+const ManagerAttendance = dynamic(() => import("@/components/manager-attendance").then((module) => module.ManagerAttendance), { loading: FeatureLoading });
+const EmployeeAttendance = dynamic(() => import("@/components/employee-attendance").then((module) => module.EmployeeAttendance), { loading: FeatureLoading });
+const NotificationInbox = dynamic(() => import("@/components/notification-inbox").then((module) => module.NotificationInbox), { loading: FeatureLoading });
 
 const ACTIVE_CONTEXT_KEY = "timefit:active-context";
 
@@ -138,6 +141,18 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
         .catch(() => { if (!cancelled) setUnreadCount(null); });
     }, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [activeContext]);
+
+  useEffect(() => {
+    if (!activeContext || !("serviceWorker" in navigator) || !canAccessSection(activeContext, "notifications")) return;
+    const refreshUnread = (event: MessageEvent) => {
+      if (event.data?.type !== "TIMEFIT_NOTIFICATION_RECEIVED") return;
+      void loadNotifications(getSupabaseBrowserClient(), activeContext.organizationId)
+        .then((inbox) => setUnreadCount(inbox.unreadCount))
+        .catch(() => undefined);
+    };
+    navigator.serviceWorker.addEventListener("message", refreshUnread);
+    return () => navigator.serviceWorker.removeEventListener("message", refreshUnread);
   }, [activeContext]);
 
   useEffect(() => {

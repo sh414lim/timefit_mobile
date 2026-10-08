@@ -1,0 +1,17 @@
+.camera-scan-help {
+  position: absolute;
+  z-index: 4;
+  right: 16px;
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  left: 16px;
+  display: grid;
+  gap: 5px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: #111827e8;
+  text-align: center;
+  box-shadow: 0 10px 30px #0005;
+}
+
+.camera-scan-help strong { font-size: 13px; }
+.camera-scan-help span { color: #c5ccd5; font-size: 11px; line-height: 1.5; }
