@@ -22,6 +22,20 @@ describe("mobile role contexts", () => {
     expect(canAccessSection(manager, "approvals")).toBe(false);
   });
 
+  it("shows manager sections for either view or manage permissions", () => {
+    const contexts = deriveMobileContexts({
+      ...employee,
+      managementAccount: {
+        id: "manager", staff_id: "staff", role_code: "manager", status: "active",
+        permissions: ["employee.manage", "attendance.manage", "schedule.manage"], categoryScopes: []
+      }
+    });
+    const manager = contexts.find((context) => context.role === "sub_manager")!;
+    expect(visibleNavigation(manager).map((item) => item.section)).toEqual([
+      "home", "employees", "attendance", "schedule", "notifications", "more"
+    ]);
+  });
+
   it("gives owners the owner shell without granting it to managers", () => {
     const contexts = deriveMobileContexts({ ...employee, isOrganizationOwner: true });
     expect(contexts.map((context) => context.role)).toContain("owner");

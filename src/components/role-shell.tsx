@@ -108,11 +108,15 @@ function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRole
   </section>;
 }
 
-function initialContext(contexts: MobileRoleContext[]): MobileRoleContext | null { return contexts[0] ?? null; }
+function initialContext(contexts: MobileRoleContext[], userContext: UserContext): MobileRoleContext | null {
+  if (userContext.isOrganizationOwner) return contexts.find((context) => context.role === "owner") ?? contexts[0] ?? null;
+  if (userContext.membership?.role !== "employee") return contexts.find((context) => context.role !== "employee") ?? contexts[0] ?? null;
+  return contexts.find((context) => context.role === "employee") ?? contexts[0] ?? null;
+}
 
 export function RoleShell({ userContext, onSignOut }: { userContext: UserContext; onSignOut: () => Promise<void> }) {
   const contexts = useMemo(() => deriveMobileContexts(userContext), [userContext]);
-  const [activeContext, setActiveContext] = useState<MobileRoleContext | null>(() => initialContext(contexts));
+  const [activeContext, setActiveContext] = useState<MobileRoleContext | null>(() => initialContext(contexts, userContext));
   const [section, setSection] = useState<MobileSection>("home");
   const [deniedSection, setDeniedSection] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
@@ -124,9 +128,10 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
       const stored = window.localStorage.getItem(ACTIVE_CONTEXT_KEY);
       const restored = contexts.find((context) => context.id === stored);
       if (restored) setActiveContext(restored);
+      else setActiveContext(initialContext(contexts, userContext));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [contexts]);
+  }, [contexts, userContext]);
 
   useEffect(() => {
     const publicKey = process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY;

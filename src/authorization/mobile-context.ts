@@ -21,17 +21,17 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "notifications", label: "알림" }, { section: "more", label: "전체" }
   ],
   sub_manager: [
-    { section: "home", label: "홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view"] },
-    { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
-    { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
+    { section: "home", label: "홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view", "employee.manage"] },
+    { section: "attendance", label: "근태", requiredAny: ["attendance.view", "attendance.manage", "attendance.review_correction"] },
+    { section: "schedule", label: "스케줄", requiredAny: ["schedule.view", "schedule.manage", "schedule.approve"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
     { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
   operations_lead: [
-    { section: "home", label: "운영 홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view"] },
-    { section: "attendance", label: "근태", requiredAny: ["attendance.view"] },
-    { section: "schedule", label: "스케줄", requiredAny: ["schedule.view"] },
+    { section: "home", label: "운영 홈" }, { section: "employees", label: "직원", requiredAny: ["employee.view", "employee.manage"] },
+    { section: "attendance", label: "근태", requiredAny: ["attendance.view", "attendance.manage", "attendance.review_correction"] },
+    { section: "schedule", label: "스케줄", requiredAny: ["schedule.view", "schedule.manage", "schedule.approve"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
     { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
