@@ -1,6 +1,7 @@
 "use client";
 
 import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { useEffect, useRef, useState } from "react";
 
 type QrCameraScannerProps = {
@@ -20,41 +21,113 @@ export function cameraErrorMessage(error: unknown) {
   return "카메라를 시작하지 못했어요. 브라우저를 다시 열거나 QR 코드를 직접 입력해 주세요.";
 }
 
+export const androidQrCameraConstraints: MediaStreamConstraints = {
+  audio: false,
+  video: {
+    facingMode: { ideal: "environment" },
+    width: { ideal: 1920, min: 1280 },
+    height: { ideal: 1080, min: 720 },
+    aspectRatio: { ideal: 16 / 9 },
+  },
+};
+
+export const qrDecodeHints = new Map<DecodeHintType, unknown>([
+  [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]],
+  [DecodeHintType.TRY_HARDER, true],
+]);
+
+type NativeBarcode = { rawValue?: string };
+type NativeBarcodeDetector = { detect(source: HTMLVideoElement): Promise<NativeBarcode[]> };
+type NativeBarcodeDetectorConstructor = new (options: { formats: string[] }) => NativeBarcodeDetector;
+
+function createNativeQrDetector() {
+  const Detector = (window as typeof window & { BarcodeDetector?: NativeBarcodeDetectorConstructor }).BarcodeDetector;
+  if (!Detector) return null;
+  try {
+    return new Detector({ formats: ["qr_code"] });
+  } catch {
+    return null;
+  }
+}
+
+async function improveAndroidFocus(video: HTMLVideoElement | null) {
+  const stream = video?.srcObject;
+  if (!(stream instanceof MediaStream)) return;
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
+  if (!capabilities.focusMode?.includes("continuous")) return;
+  await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] });
+}
+
 export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const handledRef = useRef(false);
   const [error, setError] = useState("");
+  const [needsHelp, setNeedsHelp] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    let nativeScanTimer: number | null = null;
+    let nativeScanRunning = false;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       const timer = window.setTimeout(() => setError("이 브라우저에서는 카메라를 사용할 수 없어요. QR 코드를 직접 입력해 주세요."), 0);
       return () => window.clearTimeout(timer);
     }
 
-    const reader = new BrowserQRCodeReader(undefined, {
-      delayBetweenScanAttempts: 250,
+    const reader = new BrowserQRCodeReader(qrDecodeHints, {
+      delayBetweenScanAttempts: 120,
       delayBetweenScanSuccess: 800,
     });
+    const helpTimer = window.setTimeout(() => setNeedsHelp(true), 8000);
     void reader.decodeFromConstraints(
-      { audio: false, video: { facingMode: { ideal: "environment" } } },
+      androidQrCameraConstraints,
       videoRef.current ?? undefined,
       (result) => {
         if (!result || handledRef.current || cancelled) return;
         handledRef.current = true;
+        window.clearTimeout(helpTimer);
         controlsRef.current?.stop();
         onScan(result.getText());
       },
     ).then((controls) => {
       if (cancelled) controls.stop();
-      else controlsRef.current = controls;
+      else {
+        controlsRef.current = controls;
+        void improveAndroidFocus(videoRef.current).catch(() => undefined);
+        const detector = createNativeQrDetector();
+        const scanWithNativeDetector = async () => {
+          const video = videoRef.current;
+          if (!detector || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || nativeScanRunning || handledRef.current || cancelled) return;
+          nativeScanRunning = true;
+          try {
+            const detected = await detector.detect(video);
+            const value = detected.find((item) => item.rawValue?.trim())?.rawValue?.trim();
+            if (!value || handledRef.current || cancelled) return;
+            handledRef.current = true;
+            window.clearTimeout(helpTimer);
+            controlsRef.current?.stop();
+            onScan(value);
+          } catch {
+            // Android 기기별 BarcodeDetector 편차가 있어 ZXing 경로를 계속 유지한다.
+          } finally {
+            nativeScanRunning = false;
+          }
+        };
+        if (detector) {
+          void scanWithNativeDetector();
+          nativeScanTimer = window.setInterval(() => void scanWithNativeDetector(), 180);
+        }
+      }
     }).catch((reason: unknown) => {
       if (!cancelled) setError(cameraErrorMessage(reason));
     });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(helpTimer);
+      if (nativeScanTimer !== null) window.clearInterval(nativeScanTimer);
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
@@ -66,8 +139,9 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
       <button type="button" className="camera-close" onClick={onCancel} aria-label="카메라 닫기">×</button>
     </div>
     <div className="camera-preview">
-      <video ref={videoRef} muted playsInline aria-label="QR 스캔 카메라 화면" />
+      <video ref={videoRef} muted playsInline autoPlay aria-label="QR 스캔 카메라 화면" />
       {!error && <><div className="camera-frame" aria-hidden="true"/><p>인식하면 출퇴근이 자동으로 처리됩니다.</p></>}
+      {needsHelp && !error && !busy && <div className="camera-scan-help" role="status"><strong>QR이 잘 보이지 않아요</strong><span>QR 전체가 네모 안에 들어오도록 20~30cm 떨어지고, 화면 반사를 피해주세요.</span></div>}
       {error && <div className="camera-error" role="alert"><strong>카메라를 사용할 수 없어요</strong><p>{error}</p><button type="button" className="secondary-button" onClick={onCancel}>직접 입력하기</button></div>}
       {busy && <div className="camera-busy" role="status"><span/><strong>출퇴근을 처리하고 있어요</strong></div>}
     </div>
