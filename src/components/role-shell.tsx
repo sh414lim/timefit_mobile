@@ -9,6 +9,7 @@ import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, 
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { loadNotifications } from "@/notifications/inbox";
 import { canEnablePush, enableSchedulePush } from "@/notifications/push";
+import { PushSettingsCard } from "@/components/push-settings-card";
 
 const FeatureLoading = () => <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>화면을 준비하고 있어요</h2></section>;
 const EmployeeSchedule = dynamic(() => import("@/components/employee-schedule").then((module) => module.EmployeeSchedule), { loading: FeatureLoading });
@@ -98,6 +99,7 @@ function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRole
     <article className="account-card"><span className="account-avatar">{isEmployee ? "직" : "관"}</span><div><strong>{roleLabels[context.role]}</strong><small>{context.organizationName}</small></div><span className="role-chip">{roleLabels[context.role]}</span></article>
     {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 계정·소속·권한" : item.section === "schedule" ? "근무 일정 편성·변경" : item.section === "workplaces" ? "사업장과 QR 관리" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
     <div className="dashboard-section-heading"><h2>계정과 앱</h2></div>
+    <PushSettingsCard isManager={!isEmployee} />
     <div className="dashboard-list">
       <button onClick={() => navigate("notifications")}><span className="menu-icon blue"><Icon name="bell" /></span><span><strong>알림</strong><small>근무와 승인 변경 안내</small></span><Icon name="chevron" /></button>
       <a href="mailto:support@timefit.kr?subject=TimeFit%20모바일%20문의"><span className="menu-icon amber"><Icon name="help" /></span><span><strong>도움말·문의</strong><small>로그인과 QR 문제 해결</small></span><Icon name="chevron" /></a>

@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { addDays, cacheKey, leaveConflictsWithSchedule, leaveCovers, monthRange, scheduleMinutes, startOfWeek, type ScheduleItem } from "../src/schedule/mobile-schedule";
+import { addDays, cacheKey, leaveConflictsWithSchedule, leaveCovers, monthRange, scheduleMinutes, scheduleTargetFromHash, startOfWeek, type ScheduleItem } from "../src/schedule/mobile-schedule";
 
 const shift: ScheduleItem = { id:"s",work_date:"2026-10-04",starts_at:"09:00:00",ends_at:"18:00:00",break_minutes:60,shift_name:"일반",is_day_off:false,updated_at:"2026-10-01T00:00:00Z",schedule_revision:2,acknowledged_revision:1,changed:true,previous:null };
 
 describe("mobile employee schedule", () => {
+  it("opens the exact schedule target from a safe notification hash", () => {
+    expect(scheduleTargetFromHash("#schedule?date=2026-11-01&id=schedule-1")).toEqual({ date: "2026-11-01", id: "schedule-1" });
+    expect(scheduleTargetFromHash("#schedule?date=wrong&id=schedule-1")).toBeNull();
+  });
+
   it("starts weeks on Monday and builds a calendar range", () => {
     expect(startOfWeek("2026-10-04")).toBe("2026-09-28");
     expect(monthRange("2026-10-04")).toEqual({ from: "2026-09-28", to: "2026-11-01" });

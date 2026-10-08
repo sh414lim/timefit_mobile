@@ -5,7 +5,7 @@ import type { UserContext } from "@/auth/user-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { canEnablePush, enableSchedulePush, getPushStatus, type PushStatus } from "@/notifications/push";
-import { acknowledgeSchedule, addDays, cacheKey, dateKeyInTimeZone, leaveConflictsWithSchedule, leaveCovers, loadMobileScheduleRange, monthRange, scheduleMinutes, startOfWeek, type MobileScheduleRange, type ScheduleItem } from "@/schedule/mobile-schedule";
+import { acknowledgeSchedule, addDays, cacheKey, dateKeyInTimeZone, leaveConflictsWithSchedule, leaveCovers, loadMobileScheduleRange, monthRange, scheduleMinutes, scheduleTargetFromHash, startOfWeek, type MobileScheduleRange, type ScheduleItem } from "@/schedule/mobile-schedule";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
 import { classifyRequestFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
 
@@ -21,6 +21,7 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
   const [mode, setMode] = useState<ViewMode>("week");
   const [selected, setSelected] = useState(() => dateKeyInTimeZone(new Date(), "Asia/Seoul"));
   const [anchor, setAnchor] = useState(selected);
+  const [targetScheduleId, setTargetScheduleId] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<MobileScheduleRange | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,6 +30,13 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
   const scheduleRef = useRef<MobileScheduleRange | null>(null);
   const range = useMemo(() => monthRange(anchor), [anchor]);
   const userId = userContext.profile?.id ?? "anonymous";
+
+  useEffect(() => {
+    const target = scheduleTargetFromHash(window.location.hash);
+    if (!target) return;
+    const timer = window.setTimeout(() => { setSelected(target.date); setAnchor(target.date); setTargetScheduleId(target.id); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const fetchRange = useCallback(async (background = false) => {
     if (background) setRefreshing(true);
@@ -113,7 +121,7 @@ export function EmployeeSchedule({ context, userContext }: { context: MobileRole
     </div>
     <article className="day-detail"><div className="day-detail-heading"><div><span>선택한 날짜</span><h2>{dayLabel(selected)}</h2></div><button onClick={()=>void fetchRange(true)} disabled={refreshing}>{refreshing?"동기화 중…":"새로고침"}</button></div>
       {selectedLeaves.map((leave)=>{ const conflict=selectedItems.some((item)=>leaveConflictsWithSchedule(leave,item)); return <div className="event-card leave-event" key={leave.id}><span>승인된 휴가</span><strong>{leave.leave_type} · {leave.day_part==="am"?"오전 반차":leave.day_part==="pm"?"오후 반차":"종일"}</strong><p>{leave.amount}일 · {leave.starts_on}{leave.ends_on!==leave.starts_on?` ~ ${leave.ends_on}`:""}</p>{conflict&&<em className="conflict-note">근무 일정과 시간이 겹쳐요. 관리자에게 확인해 주세요.</em>}</div>;})}
-      {selectedItems.map((item)=><div className={`event-card ${item.is_day_off?"day-off":""} ${item.changed?"changed-event":""}`} key={item.id}>{item.is_day_off?<><span>확정 일정</span><strong>휴무</strong><p>근무가 없는 휴무일이에요.</p></>:<><span>{item.shift_name}{item.changed&&" · 변경됨"}</span><strong>{shortTime(item.starts_at)} – {shortTime(item.ends_at)}</strong><p>휴게 {item.break_minutes}분 · 예정 근무 {duration(scheduleMinutes(item))}</p>{item.changed&&item.previous&&<div className="change-summary">이전 {item.previous.is_day_off?"휴무":`${shortTime(item.previous.starts_at)} – ${shortTime(item.previous.ends_at)}`} → 현재 {shortTime(item.starts_at)} – {shortTime(item.ends_at)}</div>}<small>마지막 변경 {new Intl.DateTimeFormat("ko-KR", { dateStyle:"short", timeStyle:"short", timeZone:schedule?.timezone??"Asia/Seoul" }).format(new Date(item.updated_at))}</small>{item.changed&&<button className="ack-button" onClick={()=>void acknowledge(item)}>변경 확인</button>}</>}</div>)}
+      {selectedItems.map((item)=><div className={`event-card ${item.is_day_off?"day-off":""} ${item.changed?"changed-event":""}`} style={item.id===targetScheduleId?{outline:"3px solid rgba(49,130,246,.22)",borderColor:"var(--blue)"}:undefined} aria-current={item.id===targetScheduleId?"true":undefined} key={item.id}>{item.is_day_off?<><span>확정 일정</span><strong>휴무</strong><p>근무가 없는 휴무일이에요.</p></>:<><span>{item.shift_name}{item.changed&&" · 변경됨"}</span><strong>{shortTime(item.starts_at)} – {shortTime(item.ends_at)}</strong><p>휴게 {item.break_minutes}분 · 예정 근무 {duration(scheduleMinutes(item))}</p>{item.changed&&item.previous&&<div className="change-summary">이전 {item.previous.is_day_off?"휴무":`${shortTime(item.previous.starts_at)} – ${shortTime(item.previous.ends_at)}`} → 현재 {shortTime(item.starts_at)} – {shortTime(item.ends_at)}</div>}<small>마지막 변경 {new Intl.DateTimeFormat("ko-KR", { dateStyle:"short", timeStyle:"short", timeZone:schedule?.timezone??"Asia/Seoul" }).format(new Date(item.updated_at))}</small>{item.changed&&<button className="ack-button" onClick={()=>void acknowledge(item)}>변경 확인</button>}</>}</div>)}
       {!selectedItems.length&&!selectedLeaves.length&&<div className="empty-day"><strong>등록된 일정이 없어요</strong><p>휴무로 확정된 날짜는 ‘휴무’로 별도 표시됩니다.</p></div>}
     </article>
     {typeof window!=="undefined"&&canEnablePush(process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY)&&<div className={`push-opt-in ${pushState}`}><div><strong>일정 변경 알림</strong><span>{pushState==="enabled"?"이 기기에서 알림을 받을게요.":pushState==="denied"?"브라우저 설정에서 TimeFit 알림을 허용해 주세요.":pushState==="error"?"알림 연결에 실패했어요. 잠시 후 다시 시도해 주세요.":"확정·변경된 일정을 바로 알려드려요."}</span></div><button onClick={()=>void enablePush()} disabled={pushState==="saving"||pushState==="enabled"||pushState==="checking"||pushState==="denied"}>{pushState==="saving"||pushState==="checking"?"확인 중":pushState==="enabled"?"설정됨":pushState==="denied"?"권한 필요":pushState==="error"?"다시 시도":"알림 받기"}</button></div>}
