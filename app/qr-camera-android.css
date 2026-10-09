@@ -15,3 +15,23 @@
 
 .camera-scan-help strong { font-size: 13px; }
 .camera-scan-help span { color: #c5ccd5; font-size: 11px; line-height: 1.5; }
+
+.qr-diagnostics {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid #c9dcff;
+  border-radius: 18px;
+  background: #f4f8ff;
+}
+
+.qr-diagnostics > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.qr-diagnostics > div span { color: #1b64da; font-size: 13px; font-weight: 900; }
+.qr-diagnostics > div button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: #e3edff; color: #1b64da; font: 800 11px inherit; }
+.qr-diagnostics > p { margin: 0; color: #6b7684; font-size: 11px; line-height: 1.5; }
+.qr-diagnostics ol { display: grid; gap: 8px; max-height: 240px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.qr-diagnostics li { display: grid; grid-template-columns: 68px 1fr; gap: 3px 8px; align-items: center; padding: 10px 12px; border-radius: 12px; background: #fff; }
+.qr-diagnostics li time { color: #8b95a1; font-size: 10px; font-variant-numeric: tabular-nums; }
+.qr-diagnostics li strong { color: #333d4b; font-size: 12px; }
+.qr-diagnostics li code { grid-column: 2; overflow-wrap: anywhere; color: #4e5968; font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.qr-diagnostics li.empty { display: block; color: #8b95a1; font-size: 11px; text-align: center; }

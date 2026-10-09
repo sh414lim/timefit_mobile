@@ -3,10 +3,12 @@
 import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { useEffect, useRef, useState } from "react";
+import type { QrDiagnosticStage } from "@/attendance/qr-diagnostics";
 
 type QrCameraScannerProps = {
   busy: boolean;
   onCancel: () => void;
+  onDiagnostic?: (stage: QrDiagnosticStage, detail?: string) => void;
   onScan: (value: string) => void;
 };
 
@@ -52,18 +54,32 @@ function createNativeQrDetector() {
 
 async function improveAndroidFocus(video: HTMLVideoElement | null) {
   const stream = video?.srcObject;
-  if (!(stream instanceof MediaStream)) return;
+  if (!(stream instanceof MediaStream)) return false;
   const track = stream.getVideoTracks()[0];
-  if (!track) return;
+  if (!track) return false;
   const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
-  if (!capabilities.focusMode?.includes("continuous")) return;
+  if (!capabilities.focusMode?.includes("continuous")) return false;
   await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] });
+  return true;
 }
 
-export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps) {
+function cameraStreamDetail(video: HTMLVideoElement | null) {
+  const stream = video?.srcObject;
+  if (!(stream instanceof MediaStream)) return "stream=unavailable";
+  const settings = stream.getVideoTracks()[0]?.getSettings();
+  return `${settings?.width ?? video?.videoWidth ?? 0}x${settings?.height ?? video?.videoHeight ?? 0}, facing=${settings?.facingMode ?? "unknown"}`;
+}
+
+function safeErrorName(error: unknown) {
+  return String((error as { name?: string }).name || "UnknownError").slice(0, 80);
+}
+
+export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const handledRef = useRef(false);
+  const reportedNativeErrorRef = useRef(false);
+  const reportedZxingErrorRef = useRef(false);
   const [error, setError] = useState("");
   const [needsHelp, setNeedsHelp] = useState(false);
 
@@ -71,7 +87,12 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
     let cancelled = false;
     let nativeScanTimer: number | null = null;
     let nativeScanRunning = false;
+    handledRef.current = false;
+    reportedNativeErrorRef.current = false;
+    reportedZxingErrorRef.current = false;
+    onDiagnostic?.("scanner_opened", `secure=${window.isSecureContext}`);
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      onDiagnostic?.("camera_error", "MediaDevicesUnavailable");
       const timer = window.setTimeout(() => setError("이 브라우저에서는 카메라를 사용할 수 없어요. QR 코드를 직접 입력해 주세요."), 0);
       return () => window.clearTimeout(timer);
     }
@@ -84,9 +105,14 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
     void reader.decodeFromConstraints(
       androidQrCameraConstraints,
       videoRef.current ?? undefined,
-      (result) => {
+      (result, error) => {
+        if (error && safeErrorName(error) !== "NotFoundException" && !reportedZxingErrorRef.current) {
+          reportedZxingErrorRef.current = true;
+          onDiagnostic?.("zxing_decoder_error", safeErrorName(error));
+        }
         if (!result || handledRef.current || cancelled) return;
         handledRef.current = true;
+        onDiagnostic?.("qr_detected_zxing", `length=${result.getText().length}`);
         window.clearTimeout(helpTimer);
         controlsRef.current?.stop();
         onScan(result.getText());
@@ -95,8 +121,12 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
       if (cancelled) controls.stop();
       else {
         controlsRef.current = controls;
-        void improveAndroidFocus(videoRef.current).catch(() => undefined);
+        onDiagnostic?.("camera_stream_started", cameraStreamDetail(videoRef.current));
+        void improveAndroidFocus(videoRef.current)
+          .then((applied) => onDiagnostic?.(applied ? "focus_continuous" : "focus_unavailable"))
+          .catch(() => onDiagnostic?.("focus_unavailable", "ConstraintError"));
         const detector = createNativeQrDetector();
+        onDiagnostic?.(detector ? "native_detector_available" : "native_detector_unavailable");
         const scanWithNativeDetector = async () => {
           const video = videoRef.current;
           if (!detector || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || nativeScanRunning || handledRef.current || cancelled) return;
@@ -106,11 +136,16 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
             const value = detected.find((item) => item.rawValue?.trim())?.rawValue?.trim();
             if (!value || handledRef.current || cancelled) return;
             handledRef.current = true;
+            onDiagnostic?.("qr_detected_native", `length=${value.length}`);
             window.clearTimeout(helpTimer);
             controlsRef.current?.stop();
             onScan(value);
-          } catch {
+          } catch (error) {
             // Android 기기별 BarcodeDetector 편차가 있어 ZXing 경로를 계속 유지한다.
+            if (!reportedNativeErrorRef.current) {
+              reportedNativeErrorRef.current = true;
+              onDiagnostic?.("native_detector_error", safeErrorName(error));
+            }
           } finally {
             nativeScanRunning = false;
           }
@@ -121,7 +156,10 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
         }
       }
     }).catch((reason: unknown) => {
-      if (!cancelled) setError(cameraErrorMessage(reason));
+      if (!cancelled) {
+        onDiagnostic?.("camera_error", safeErrorName(reason));
+        setError(cameraErrorMessage(reason));
+      }
     });
 
     return () => {
@@ -131,7 +169,7 @@ export function QrCameraScanner({ busy, onCancel, onScan }: QrCameraScannerProps
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
-  }, [onScan]);
+  }, [onDiagnostic, onScan]);
 
   return <div className="camera-sheet" role="dialog" aria-modal="true" aria-labelledby="camera-title">
     <div className="camera-sheet__header">
