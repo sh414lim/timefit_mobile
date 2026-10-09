@@ -7,6 +7,7 @@ import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { approvalCacheKey, loadApprovalInbox, reviewApproval, validateReview, type ApprovalInbox, type ApprovalItem, type ApprovalStatus } from "@/approvals/mobile-approvals";
 import { useUpdateSafetyBlocker } from "@/pwa/update-safety";
 import { notificationTargetId } from "@/notifications/inbox";
+import { isAuthorizationChangedError, requireFreshManagementAuthorization } from "@/authorization/action-guard";
 
 const statusLabel: Record<ApprovalStatus, string> = { pending: "승인 대기", approved: "승인", rejected: "반려" };
 const kindLabel = { leave: "휴가", schedule: "스케줄" } as const;
@@ -15,11 +16,12 @@ function approvalError(error: unknown) {
   const message = String((error as { message?: string })?.message ?? "");
   if (message.includes("approval_already_processed")) return "이미 다른 관리자가 처리한 요청이에요. 목록을 새로고침합니다.";
   if (message.includes("approval_access_denied")) return "이 요청을 처리할 권한이 없어요.";
+  if (message.includes("authorization_changed")) return "관리 권한이 변경되어 요청을 처리하지 않았어요. 최신 권한으로 화면을 갱신합니다.";
   if (message.includes("invalid_review_comment")) return "관리자 의견을 확인해 주세요.";
   return "승인 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.";
 }
 
-export function ManagerApprovals({ context, userContext }: { context: MobileRoleContext; userContext: UserContext }) {
+export function ManagerApprovals({ context, userContext, onAuthorizationChanged }: { context: MobileRoleContext; userContext: UserContext; onAuthorizationChanged: () => Promise<UserContext | null> }) {
   const userId = userContext.profile?.id ?? "manager";
   const cacheKey = approvalCacheKey(userId, context.organizationId);
   const [inbox, setInbox] = useState<ApprovalInbox | null>(null);
@@ -80,12 +82,15 @@ export function ManagerApprovals({ context, userContext }: { context: MobileRole
     if (!selected || !decision) return;
     setSaving(true); setError("");
     try {
-      await reviewApproval(getSupabaseBrowserClient(), context.organizationId, selected, decision, comment.trim(), requestKey);
+      const client = getSupabaseBrowserClient();
+      await requireFreshManagementAuthorization(client, context.organizationId, [selected.kind === "leave" ? "leave.review" : "schedule.approve"]);
+      await reviewApproval(client, context.organizationId, selected, decision, comment.trim(), requestKey);
       setNotice(decision === "approved" ? "요청을 승인했어요." : "요청을 반려했어요.");
       setSelected(null); setDecision(null); setComment(""); setRequestKey(crypto.randomUUID());
       await refresh(true);
     } catch (nextError) {
       setError(approvalError(nextError));
+      if (isAuthorizationChangedError(nextError)) await onAuthorizationChanged();
       if (String((nextError as { message?: string })?.message ?? "").includes("approval_already_processed")) await refresh(true);
     } finally { setSaving(false); }
   }

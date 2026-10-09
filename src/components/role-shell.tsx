@@ -114,7 +114,7 @@ function initialContext(contexts: MobileRoleContext[], userContext: UserContext)
   return contexts.find((context) => context.role === "employee") ?? contexts[0] ?? null;
 }
 
-export function RoleShell({ userContext, onSignOut }: { userContext: UserContext; onSignOut: () => Promise<void> }) {
+export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { userContext: UserContext; onRefreshAuthorization: () => Promise<UserContext | null>; onSignOut: () => Promise<void> }) {
   const contexts = useMemo(() => deriveMobileContexts(userContext), [userContext]);
   const [activeContext, setActiveContext] = useState<MobileRoleContext | null>(() => initialContext(contexts, userContext));
   const [section, setSection] = useState<MobileSection>("home");
@@ -220,9 +220,9 @@ export function RoleShell({ userContext, onSignOut }: { userContext: UserContext
       {section === "home" ? (isEmployee ? <EmployeeHome context={activeContext} displayName={displayName} navigate={navigate} /> : <ManagerHome context={activeContext} navigate={navigate} />)
         : section === "schedule" && isEmployee ? <EmployeeSchedule context={activeContext} userContext={userContext} />
         : section === "requests" && isEmployee ? <EmployeeLeave context={activeContext} userContext={userContext} />
-        : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} />
+        : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />
-        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} />
+        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate} onUnreadCountChange={setUnreadCount} />
         : section === "more" ? <MoreMenu context={activeContext} items={items} onSignOut={onSignOut} navigate={navigate} />
         : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label}</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}
