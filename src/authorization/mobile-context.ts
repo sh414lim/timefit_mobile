@@ -72,6 +72,14 @@ export function visibleNavigation(context: MobileRoleContext): NavigationItem[] 
   return navigation[context.role].filter((item) => !item.requiredAny || item.requiredAny.some((permission) => context.permissions.includes(permission)));
 }
 
+export function hasAnyManagementPermission(context: MobileRoleContext, requiredAny: string[]) {
+  return context.role === "owner" || requiredAny.some((permission) => context.permissions.includes(permission));
+}
+
+export function canManageAttendanceQr(context: MobileRoleContext) {
+  return hasAnyManagementPermission(context, ["attendance.manage"]);
+}
+
 export function canAccessSection(context: MobileRoleContext, section: string): section is MobileSection {
   return visibleNavigation(context).some((item) => item.section === section);
 }

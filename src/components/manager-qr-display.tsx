@@ -5,8 +5,10 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { attendanceQrUrl, rotateAttendanceQr, startAttendanceQr, stopAttendanceQr, type AttendanceQrPayload } from "@/attendance/manager-qr";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
+import type { UserContext } from "@/auth/user-context";
+import { isAuthorizationChangedError, requireFreshManagementAuthorization } from "@/authorization/action-guard";
 
-export function ManagerQrDisplay({ organizationId, organizationName, onClose }: { organizationId: string; organizationName: string; onClose: () => void }) {
+export function ManagerQrDisplay({ organizationId, organizationName, onAuthorizationChanged, onClose }: { organizationId: string; organizationName: string; onAuthorizationChanged: () => Promise<UserContext | null>; onClose: () => void }) {
   const [payload, setPayload] = useState<AttendanceQrPayload | null>(null);
   const [image, setImage] = useState("");
   const [error, setError] = useState("");
@@ -23,16 +25,31 @@ export function ManagerQrDisplay({ organizationId, organizationName, onClose }: 
   const rotate = useCallback(async () => {
     if (!sessionRef.current) return;
     setError("");
-    try { await renderPayload(await rotateAttendanceQr(getSupabaseBrowserClient(), sessionRef.current)); }
-    catch { setError("QR을 갱신하지 못했어요. 네트워크 연결 후 다시 시도해 주세요."); }
-  }, [renderPayload]);
+    try {
+      const client = getSupabaseBrowserClient();
+      await requireFreshManagementAuthorization(client, organizationId, ["attendance.manage"]);
+      await renderPayload(await rotateAttendanceQr(client, sessionRef.current));
+    } catch (nextError) {
+      if (isAuthorizationChangedError(nextError)) {
+        setError("관리 권한이 변경되어 QR 갱신을 중단했어요.");
+        await onAuthorizationChanged();
+        return;
+      }
+      setError("QR을 갱신하지 못했어요. 네트워크 연결 후 다시 시도해 주세요.");
+    }
+  }, [onAuthorizationChanged, organizationId, renderPayload]);
 
   useEffect(() => {
     let active = true;
     const client = getSupabaseBrowserClient();
-    void startAttendanceQr(client, organizationId).then(async (next) => {
-      if (active) await renderPayload(next);
-    }).catch(() => { if (active) setError("QR 표시를 시작하지 못했어요. 관리자 권한을 확인해 주세요."); });
+    void requireFreshManagementAuthorization(client, organizationId, ["attendance.manage"])
+      .then(() => startAttendanceQr(client, organizationId))
+      .then(async (next) => { if (active) await renderPayload(next); })
+      .catch(async (nextError) => {
+        if (!active) return;
+        if (isAuthorizationChangedError(nextError)) await onAuthorizationChanged();
+        setError("QR 표시를 시작하지 못했어요. 관리자 권한을 확인해 주세요.");
+      });
     const rotationTimer = window.setInterval(() => void rotate(), 60_000);
     const countdownTimer = window.setInterval(() => setSecondsLeft((value) => Math.max(0, value - 1)), 1_000);
     return () => {
@@ -43,7 +60,7 @@ export function ManagerQrDisplay({ organizationId, organizationName, onClose }: 
       sessionRef.current = null;
       if (sessionId) void stopAttendanceQr(client, sessionId).catch(() => undefined);
     };
-  }, [organizationId, renderPayload, rotate]);
+  }, [onAuthorizationChanged, organizationId, renderPayload, rotate]);
 
   async function close() {
     const sessionId = sessionRef.current;

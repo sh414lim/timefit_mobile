@@ -27,26 +27,28 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
   const [submitting, setSubmitting] = useState(false);
   const refreshingContext = useRef(false);
 
-  const resolveSession = useCallback(async (session: Session | null, background = false) => {
+  const resolveSession = useCallback(async (session: Session | null, background = false): Promise<UserContext | null> => {
     reconcileSessionUser(session?.user.id ?? null);
-    if (!session) { setContext(null); setScreen("signed-out"); return; }
+    if (!session) { setContext(null); setScreen("signed-out"); return null; }
     try {
       const nextContext = await loadUserContext(getSupabaseBrowserClient(supabaseUrl, supabaseKey));
       setContext(nextContext);
       setScreen(hasActiveWorkScope(nextContext) ? "signed-in" : "unlinked");
+      return nextContext;
     } catch {
       setMessage("계정 정보를 확인하지 못했습니다. 네트워크 연결 후 다시 시도해 주세요.");
       if (!background) setScreen("error");
+      return null;
     }
   }, [supabaseKey, supabaseUrl]);
 
-  const refreshActiveContext = useCallback(async () => {
-    if (refreshingContext.current || document.visibilityState === "hidden") return;
+  const refreshActiveContext = useCallback(async (): Promise<UserContext | null> => {
+    if (refreshingContext.current || document.visibilityState === "hidden") return null;
     refreshingContext.current = true;
     try {
       const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
       const { data } = await client.auth.getSession();
-      await resolveSession(data.session, true);
+      return await resolveSession(data.session, true);
     } finally {
       refreshingContext.current = false;
     }
@@ -106,5 +108,5 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
 
   if (screen === "error") return <main className="auth-shell"><BrandHeader /><section className="notice-card danger"><span>연결 오류</span><h1>계정 정보를 확인할 수 없어요</h1><p>{message}</p><button className="primary-button" onClick={()=>window.location.reload()}>다시 시도</button><button className="text-button" onClick={signOut}>로그아웃</button></section></main>;
 
-  return context ? <RoleShell userContext={context} onSignOut={signOut} /> : null;
+  return context ? <RoleShell userContext={context} onRefreshAuthorization={refreshActiveContext} onSignOut={signOut} /> : null;
 }

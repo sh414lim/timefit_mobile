@@ -13,4 +13,9 @@ describe("delegated authorization refresh", () => {
   it("keeps the last usable screen during a transient background refresh failure", () => {
     expect(authGate).toContain('if (!background) setScreen("error")');
   });
+
+  it("exposes a fresh context check to important manager actions", () => {
+    expect(authGate).toContain("onRefreshAuthorization={refreshActiveContext}");
+    expect(authGate).toContain("return await resolveSession(data.session, true)");
+  });
 });

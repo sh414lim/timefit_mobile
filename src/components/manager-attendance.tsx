@@ -2,13 +2,13 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import type {UserContext} from "@/auth/user-context";
 import {getSupabaseBrowserClient} from "@/auth/supabase";
-import type {MobileRoleContext} from "@/authorization/mobile-context";
+import {canManageAttendanceQr,type MobileRoleContext} from "@/authorization/mobile-context";
 import {attendanceCacheKey,formatClock,loadManagerAttendance,parseAttendanceDeepLink,type AttendanceDashboard,type AttendanceStatus} from "@/attendance/manager-attendance";
 import {ManagerQrDisplay} from "@/components/manager-qr-display";
 
 const labels:Record<AttendanceStatus,string>={working:"근무 중",completed:"퇴근 완료",missing:"미기록",scheduled:"출근 예정"};
 const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-export function ManagerAttendance({context,userContext}:{context:MobileRoleContext;userContext:UserContext}){
+export function ManagerAttendance({context,userContext,onAuthorizationChanged}:{context:MobileRoleContext;userContext:UserContext;onAuthorizationChanged:()=>Promise<UserContext|null>}){
  const target=typeof window==="undefined"?{date:null,staffId:null,alertType:null}:parseAttendanceDeepLink(window.location.hash);
  const [date,setDate]=useState(target.date??today); const [targetStaff,setTargetStaff]=useState(target.staffId); const [targetAlert]=useState(target.alertType); const [data,setData]=useState<AttendanceDashboard|null>(null); const dataRef=useRef<AttendanceDashboard|null>(null);
  const [filter,setFilter]=useState<"all"|AttendanceStatus>("all"); const [loading,setLoading]=useState(true); const [refreshing,setRefreshing]=useState(false); const [error,setError]=useState("");
@@ -19,7 +19,8 @@ export function ManagerAttendance({context,userContext}:{context:MobileRoleConte
  const rows=useMemo(()=>{const priority:Record<AttendanceStatus,number>={missing:0,working:1,scheduled:2,completed:3};const filtered=data?.rows.filter(row=>filter==="all"||row.status===filter)??[];return [...filtered].sort((a,b)=>Number(b.staff_id===targetStaff)-Number(a.staff_id===targetStaff)||(Number(b.late)-Number(a.late))||priority[a.status]-priority[b.status]);},[data?.rows,filter,targetStaff]);
  if(loading&&!data)return <section className="attendance-state" aria-busy="true"><div className="spinner"/><h2>근태 현황을 불러오고 있어요</h2></section>;
  if(error&&!data)return <section className="attendance-state error"><span>연결 오류</span><h2>{error}</h2><button className="primary-button" onClick={()=>void refresh()}>다시 시도</button></section>;
- return <section className="manager-attendance">{showQr&&<ManagerQrDisplay organizationId={context.organizationId} organizationName={context.organizationName} onClose={()=>setShowQr(false)}/>}<button type="button" className="manager-qr-open" onClick={()=>setShowQr(value=>!value)}>{showQr?"QR 표시 닫기":`${context.organizationName} 출퇴근 QR 표시`}</button>{targetStaff&&<div className="attendance-alert-target" role="status"><span>{targetAlert==="checkout_after_scheduled_end"?"퇴근 누락 알림":"출근 누락 알림"}에서 이동했어요.</span><button onClick={()=>setTargetStaff(null)}>전체 보기</button></div>}<div className="attendance-date"><label>조회 날짜<input type="date" value={date} onChange={event=>{setDate(event.target.value);setTargetStaff(null);}}/></label><button onClick={()=>void refresh(true)} disabled={refreshing}>{refreshing?"동기화 중…":"새로고침"}</button></div>
+ const canManageQr=canManageAttendanceQr(context);
+ return <section className="manager-attendance">{showQr&&canManageQr&&<ManagerQrDisplay organizationId={context.organizationId} organizationName={context.organizationName} onAuthorizationChanged={onAuthorizationChanged} onClose={()=>setShowQr(false)}/>} {canManageQr&&<button type="button" className="manager-qr-open" onClick={()=>setShowQr(value=>!value)}>{showQr?"QR 표시 닫기":`${context.organizationName} 출퇴근 QR 표시`}</button>}{targetStaff&&<div className="attendance-alert-target" role="status"><span>{targetAlert==="checkout_after_scheduled_end"?"퇴근 누락 알림":"출근 누락 알림"}에서 이동했어요.</span><button onClick={()=>setTargetStaff(null)}>전체 보기</button></div>}<div className="attendance-date"><label>조회 날짜<input type="date" value={date} onChange={event=>{setDate(event.target.value);setTargetStaff(null);}}/></label><button onClick={()=>void refresh(true)} disabled={refreshing}>{refreshing?"동기화 중…":"새로고침"}</button></div>
  <div className="attendance-summary">{(["missing","working","completed","scheduled"] as AttendanceStatus[]).map(status=><button key={status} className={`${status} ${filter===status?"active":""}`} onClick={()=>setFilter(filter===status?"all":status)}><span>{labels[status]}</span><strong>{data?.counts[status]??0}<small>명</small></strong></button>)}</div>
  {error&&<div className="attendance-error" role="alert">{error}<button onClick={()=>setError("")}>닫기</button></div>}
  <div className="attendance-list-heading"><div><span>{filter==="all"?"전체":labels[filter]}</span><h2>직원 근태 현황</h2></div><strong>{rows.length}명</strong></div>
