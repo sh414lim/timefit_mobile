@@ -5,6 +5,7 @@ import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { formatClock } from "@/attendance/manager-attendance";
 import { loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
+import { createQrDiagnosticEvent, qrDiagnosticsEnabled, type QrDiagnosticEvent, type QrDiagnosticStage } from "@/attendance/qr-diagnostics";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
 import { classifyRequestFailure, isAmbiguousWriteFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
@@ -19,9 +20,15 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
   const [scanning, setScanning] = useState(false);
   const [message, setMessage] = useState("");
   const [recovery, setRecovery] = useState<Recovery | null>(null);
+  const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<QrDiagnosticEvent[]>([]);
   const requestKeyRef = useRef(crypto.randomUUID());
   const busyRef = useRef(false);
   useUpdateSafetyBlocker("attendance-write", "출퇴근 기록을 처리 중이에요", busy || recovery !== null);
+
+  const addDiagnostic = useCallback((stage: QrDiagnosticStage, detail?: string) => {
+    setDiagnostics((current) => [...current.slice(-29), createQrDiagnosticEvent(stage, detail)]);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -38,15 +45,21 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const debug = qrDiagnosticsEnabled(window.location.search);
+      setDiagnosticsEnabled(debug);
+      if (debug) addDiagnostic("debug_enabled", "volatile=true, sensitive=false");
       const value = new URLSearchParams(window.location.search).get("qr");
       if (value) setToken(value);
       void refresh();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [refresh]);
+  }, [addDiagnostic, refresh]);
 
   const submit = useCallback(async (scannedValue?: string, retry?: Recovery) => {
-    if (busyRef.current || !state || state.nextAction === "completed" || state.nextAction === "review_required") return;
+    if (busyRef.current || !state || state.nextAction === "completed" || state.nextAction === "review_required") {
+      if (diagnosticsEnabled) addDiagnostic("rpc_skipped", !state ? "attendance_state_unavailable" : `next=${state.nextAction}`);
+      return;
+    }
     const rawToken = retry?.token ?? scannedValue ?? token;
     if (!rawToken.trim()) {
       setMessage("카메라로 매장 QR을 스캔하거나 QR 코드를 직접 입력해 주세요.");
@@ -66,7 +79,9 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
     try {
       const normalizedToken = qrTokenFromUrl(rawToken);
       setToken(normalizedToken);
+      if (diagnosticsEnabled) addDiagnostic("rpc_started", `token_length=${normalizedToken.length}`);
       const result = await withRequestTimeout(recordQrAttendance(getSupabaseBrowserClient(), normalizedToken, requestKey));
+      if (diagnosticsEnabled) addDiagnostic("rpc_succeeded", `action=${result.action ?? result.nextAction}, duplicate=${Boolean(result.duplicate)}`);
       setState((current) => current ? { ...current, ...result } : result);
       reportNetworkSuccess(result.serverTime); setRecovery(null); requestKeyRef.current = crypto.randomUUID();
       setMessage(result.action === "review_required" ? "이전 근무가 18시간을 초과해 관리자 확인이 필요해요." : result.duplicate ? `이미 처리된 ${result.action === "check_out" ? "퇴근" : "출근"} 기록을 확인했어요.` : result.action === "check_out" ? "퇴근 기록을 서버에 저장했어요." : "출근 기록을 서버에 저장했어요.");
@@ -74,6 +89,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       await refresh();
     } catch (error) {
       const failure = classifyRequestFailure(error, isBrowserOnline());
+      if (diagnosticsEnabled) addDiagnostic("rpc_failed", `category=${failure}`);
       if (isAmbiguousWriteFailure(failure)) {
         reportNetworkFailure(failure === "offline" ? "offline" : "degraded");
         await refresh();
@@ -83,7 +99,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       busyRef.current = false;
       setBusy(false);
     }
-  }, [refresh, state, token]);
+  }, [addDiagnostic, diagnosticsEnabled, refresh, state, token]);
 
   const handleScan = useCallback((value: string) => {
     setScanning(false);
@@ -108,8 +124,13 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       {message && <p className="attendance-message" role="status" aria-live="polite">{message}</p>}
       {recovery && <div className="request-recovery" role="alert"><span>출퇴근 저장 여부를 다시 확인해야 해요.</span><button disabled={busy || !isBrowserOnline()} onClick={() => void submit(undefined, recovery)}>저장 여부 확인</button></div>}
     </div>
+    {diagnosticsEnabled && <section className="qr-diagnostics" aria-live="polite">
+      <div><span>Android QR 진단</span><button type="button" onClick={() => setDiagnostics([])}>지우기</button></div>
+      <p>이 화면에만 임시 표시되며 QR 값·계정정보는 기록하지 않습니다.</p>
+      <ol>{diagnostics.length ? diagnostics.map((event, index) => <li key={`${event.occurredAt}-${index}`}><time>{new Date(event.occurredAt).toLocaleTimeString("ko-KR", { hour12: false })}</time><strong>{event.label}</strong>{event.detail && <code>{event.detail}</code>}</li>) : <li className="empty">아직 진단 이벤트가 없습니다.</li>}</ol>
+    </section>}
     {scanning && (
-      <QrCameraScanner busy={busy} onCancel={() => setScanning(false)} onScan={handleScan}/>
+      <QrCameraScanner busy={busy} onCancel={() => setScanning(false)} onDiagnostic={diagnosticsEnabled ? addDiagnostic : undefined} onScan={handleScan}/>
     )}
   </section>;
 }
