@@ -22,7 +22,10 @@ export function parseLoginIdentity(value: string): LoginIdentity | null {
 }
 
 export function loginCredentials(identity: LoginIdentity, password: string) {
-  if (identity.kind === "phone") return { phone: identity.value, password };
+  if (identity.kind === "phone") {
+    const localPhone = identity.value.replace(/^\+82/, "0");
+    return { email: `${localPhone}@accounts.timefit.local`, password };
+  }
   return { email: identity.kind === "employee-id" ? `${identity.value}@accounts.timefit.local` : identity.value, password };
 }
 
