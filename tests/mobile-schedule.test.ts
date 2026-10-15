@@ -17,6 +17,7 @@ describe("mobile employee schedule", () => {
 
   it("calculates payable scheduled duration after break", () => {
     expect(scheduleMinutes(shift)).toBe(480);
+    expect(scheduleMinutes({...shift,starts_at:"22:00:00",ends_at:"06:00:00"})).toBe(420);
   });
 
   it("expands approved leave dates and isolates caches by user and organization", () => {

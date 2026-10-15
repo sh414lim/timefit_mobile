@@ -16,6 +16,8 @@ import "./alt02.css";
 import "./mob10.css";
 import "./uiux01.css";
 import "./uiux02.css";
+import "./mgr03.css";
+import "./mgr03-groups.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },
