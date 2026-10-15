@@ -144,7 +144,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
     <div className="qr-entry">
       <span>{state?.workplaceName ?? context.organizationName} 업장 QR</span>
       <h3>카메라로 QR을 스캔해 주세요</h3>
-      <p className="qr-help">매장에 표시된 QR만 사용할 수 있으며, 스캔 후 서버 시각으로 즉시 기록됩니다.</p>
+      <p className="qr-help">매장에 표시된 QR만 사용할 수 있으며, 스캔 후 출근·퇴근을 한 번 더 확인합니다.</p>
       <button className="camera-button" disabled={scanDisabled} onClick={() => { setMessage(""); setPendingScan(null); setScanning(true); }}><span aria-hidden="true">▣</span>{cameraButtonLabel}</button>
       {!state && !loadingState && <button className="secondary-button attendance-retry" onClick={() => void refresh()}>출퇴근 상태 다시 불러오기</button>}
       <details className="manual-qr"><summary>카메라를 사용할 수 없나요?</summary><label htmlFor="manual-qr-value">QR 링크 또는 코드 직접 입력</label><input id="manual-qr-value" value={token} onChange={(event) => setToken(event.target.value)} placeholder="QR 링크 또는 코드"/><button className="secondary-button" disabled={scanDisabled} onClick={() => void submit()}>{`코드로 ${actionLabel}`}</button></details>
