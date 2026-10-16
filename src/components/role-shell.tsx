@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { clearPrivateBrowserData } from "@/auth/session-storage";
 import type { UserContext } from "@/auth/user-context";
@@ -10,6 +10,7 @@ import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { loadNotifications } from "@/notifications/inbox";
 import { canEnablePush, enableSchedulePush } from "@/notifications/push";
 import { PushSettingsCard } from "@/components/push-settings-card";
+import { loadManagerHome, managerHomeCacheKey, mergeManagerHome, type ManagerHomeSection, type ManagerHomeSummary } from "@/dashboard/manager-home";
 
 const FeatureLoading = () => <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>화면을 준비하고 있어요</h2></section>;
 const EmployeeSchedule = dynamic(() => import("@/components/employee-schedule").then((module) => module.EmployeeSchedule), { loading: FeatureLoading });
@@ -69,10 +70,47 @@ function ManagerHome({ context, navigate }: { context: MobileRoleContext; naviga
   const canReview = canAccessSection(context, "approvals");
   const canViewAttendance = canAccessSection(context, "attendance");
   const canViewSchedule = canAccessSection(context, "schedule");
+  const cacheKey = managerHomeCacheKey(context);
+  const [summary, setSummary] = useState<ManagerHomeSummary | null>(null);
+  const summaryRef = useRef<ManagerHomeSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const summaryLabels: Record<ManagerHomeSection, string> = { attendance: "근태", approvals: "승인", staffing: "인력" };
+
+  async function refresh(background = false) {
+    if (background) setRefreshing(true); else setLoading(true);
+    try {
+      const next = mergeManagerHome(summaryRef.current, await loadManagerHome(getSupabaseBrowserClient(), context));
+      summaryRef.current = next;
+      setSummary(next);
+      window.sessionStorage.setItem(cacheKey, JSON.stringify(next));
+    } finally { setLoading(false); setRefreshing(false); }
+  }
+
+  useEffect(() => {
+    const cached = window.sessionStorage.getItem(cacheKey);
+    const timer = window.setTimeout(() => {
+      if (cached) try { const restored = JSON.parse(cached) as ManagerHomeSummary; summaryRef.current = restored; setSummary(restored); setLoading(false); } catch { window.sessionStorage.removeItem(cacheKey); }
+      void refresh(Boolean(cached));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  // The context-scoped cache key is the refresh boundary.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey]);
+
+  const attendanceIssueCount = (summary?.attendance?.counts.missing ?? 0) + (summary?.attendance?.rows.filter((row) => row.late).length ?? 0);
+  const shortageCount = summary?.staffing?.days.reduce((total, day) => total + day.shortages.reduce((dayTotal, item) => dayTotal + Math.max(0, item.required_count - item.scheduled_count), 0), 0) ?? 0;
+  const noData = summary && !summary.attendance && !summary.approvals && !summary.staffing;
+  if (loading && !summary) return <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>오늘 운영 현황을 불러오고 있어요</h2></section>;
+  if (noData) return <section className="schedule-state error"><span>연결 오류</span><h2>운영 현황을 불러오지 못했어요</h2><button className="primary-button" onClick={() => void refresh()}>다시 시도</button></section>;
   return <section className="dashboard-home">
+    <div className="manager-home-tools"><span>{summary?.serverTime ? `마지막 동기화 ${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", timeZone: summary.attendance?.timezone ?? summary.staffing?.timezone ?? summary.approvals?.timezone ?? "Asia/Seoul" }).format(new Date(summary.serverTime))}` : "동기화 정보 없음"}</span><button onClick={() => void refresh(true)} disabled={refreshing}>{refreshing ? "동기화 중…" : "새로고침"}</button></div>
+    {Boolean(summary?.failures.length) && <div className="manager-home-warning" role="status">{summary?.failures.map((section) => summaryLabels[section]).join("·")} 요약은 갱신하지 못했어요. 불러온 정보만 표시합니다.</div>}
     <div className="manager-summary">
-      {canViewAttendance && <button onClick={() => navigate("attendance")}><span>오늘 근태</span><strong>직원별 현황</strong><small>출근·퇴근·누락 확인</small></button>}
-      {canReview && <button onClick={() => navigate("approvals")}><span>승인 업무</span><strong>요청 검토</strong><small>휴가·근무 변경 처리</small></button>}
+      {summary?.attendance && <button className={attendanceIssueCount ? "danger" : ""} onClick={() => navigate("attendance")}><span>오늘 근태 이상</span><strong>{attendanceIssueCount}<small>건</small></strong><small>미출근 {summary.attendance.counts.missing} · 지각 {summary.attendance.rows.filter((row) => row.late).length}</small></button>}
+      {summary?.approvals && <button className={summary.approvals.counts.pending ? "warning" : ""} onClick={() => navigate("approvals")}><span>승인 대기</span><strong>{summary.approvals.counts.pending}<small>건</small></strong><small>휴가·스케줄 요청</small></button>}
+      {summary?.attendance && <button onClick={() => navigate("attendance")}><span>현재 근태</span><strong>{summary.attendance.counts.working}<small>명 근무 중</small></strong><small>퇴근 완료 {summary.attendance.counts.completed}명</small></button>}
+      {summary?.staffing && <button className={shortageCount ? "danger" : ""} onClick={() => navigate("schedule")}><span>오늘·내일 인력</span><strong>{summary.staffing.configured ? `${shortageCount}명 부족` : "기준 미설정"}</strong><small>{summary.staffing.configured ? `예정 ${summary.staffing.days.reduce((total, day) => total + day.scheduled_count, 0)}명` : "관리자 웹에서 필요 인원을 설정해 주세요"}</small></button>}
     </div>
     <div className="dashboard-section-heading"><h2>우선 확인</h2><span>{context.organizationName}</span></div>
     <div className="dashboard-list">
