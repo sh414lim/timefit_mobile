@@ -17,6 +17,7 @@ const EmployeeSchedule = dynamic(() => import("@/components/employee-schedule").
 const EmployeeLeave = dynamic(() => import("@/components/employee-leave").then((module) => module.EmployeeLeave), { loading: FeatureLoading });
 const ManagerApprovals = dynamic(() => import("@/components/manager-approvals").then((module) => module.ManagerApprovals), { loading: FeatureLoading });
 const ManagerAttendance = dynamic(() => import("@/components/manager-attendance").then((module) => module.ManagerAttendance), { loading: FeatureLoading });
+const ManagerSchedule = dynamic(() => import("@/components/manager-schedule").then((module) => module.ManagerSchedule), { loading: FeatureLoading });
 const EmployeeAttendance = dynamic(() => import("@/components/employee-attendance").then((module) => module.EmployeeAttendance), { loading: FeatureLoading });
 const NotificationInbox = dynamic(() => import("@/components/notification-inbox").then((module) => module.NotificationInbox), { loading: FeatureLoading });
 
@@ -226,7 +227,7 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
   const displayName = userContext.profile?.display_name ?? "TimeFit 사용자";
   const isEmployee = activeContext.role === "employee";
   const pageLabels: Partial<Record<MobileSection, { eyebrow: string; title: string; description: string }>> = {
-    schedule: { eyebrow: "내 근무 일정", title: "일정", description: "확정 일정과 변경 내역을 한눈에 확인해요." },
+    schedule: isEmployee ? { eyebrow: "내 근무 일정", title: "일정", description: "확정 일정과 변경 내역을 한눈에 확인해요." } : { eyebrow: "직원 근무 편성", title: "스케줄", description: "주간 일정과 충돌을 확인하고 직원 근무를 관리해요." },
     attendance: isEmployee ? { eyebrow: activeContext.organizationName, title: "QR 출퇴근", description: "매장 QR로 오늘 출퇴근을 안전하게 기록해요." } : { eyebrow: "오늘 운영", title: "근태 현황", description: "직원별 출퇴근 상태와 예외를 확인해요." },
     requests: { eyebrow: "휴가·근무 변경", title: "요청", description: "잔여 연차와 요청 처리 상태를 확인해요." },
     approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가와 근무 변경 요청을 검토해요." },
@@ -248,13 +249,14 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
       {section !== "home" && page && <div className="page-heading"><span>{page.eyebrow}</span><h1>{page.title}</h1><p>{page.description}</p></div>}
       {section === "home" ? (isEmployee ? <EmployeeHome context={activeContext} displayName={displayName} navigate={navigate} /> : <ManagerHome context={activeContext} navigate={navigate} />)
         : section === "schedule" && isEmployee ? <EmployeeSchedule context={activeContext} userContext={userContext} />
+        : section === "schedule" ? <ManagerSchedule context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "requests" && isEmployee ? <EmployeeLeave context={activeContext} userContext={userContext} />
         : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />
         : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} />
         : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate} onUnreadCountChange={setUnreadCount} />
         : section === "more" ? <MoreMenu context={activeContext} items={items} onSignOut={onSignOut} navigate={navigate} />
-        : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label} 기능을 준비하고 있어요</strong><p>{section === "schedule" ? "단일 사업장의 직원 일정 편성 기능을 연결 중입니다. 현재는 관리자 웹에서 처리해 주세요." : "웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다."}</p></div>}
+        : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label} 기능을 준비하고 있어요</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}
     </section>}
     <nav className={`bottom-nav ${isEmployee ? "employee-nav" : "manager-nav"}`} style={{ "--nav-items": primaryItems.length } as CSSProperties} aria-label="주요 메뉴">
       {primaryItems.map((item) => { const selected = (section === item.section || (section === "notifications" && item.section === "more")) && !deniedSection; return <button key={item.section} className={`${selected ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={selected ? "page" : undefined}>
