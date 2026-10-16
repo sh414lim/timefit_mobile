@@ -1,0 +1,25 @@
+"use client";
+
+import {useCallback,useEffect,useState} from "react";
+import type {MobileRoleContext} from "@/authorization/mobile-context";
+import {getSupabaseBrowserClient} from "@/auth/supabase";
+import type {TodayAttendance} from "@/attendance/employee-qr";
+import {loadAttendanceCorrectionRequests,submitAttendanceCorrectionRequest,validateCorrectionRequest,type AttendanceCorrectionRequest,type AttendanceCorrectionRequestDraft} from "@/attendance/correction-requests";
+import {localClock} from "@/employees/manager-staff";
+import {useUpdateSafetyBlocker} from "@/pwa/update-safety";
+
+const requestStatus={pending:"승인 대기",approved:"승인",rejected:"반려",cancelled:"취소"} as const;
+function requestError(error:unknown){const message=String((error as {message?:string})?.message??error);if(message.includes("attendance_correction_pending"))return "같은 날짜의 정정 요청이 이미 승인 대기 중이에요.";if(message.includes("invalid_attendance_correction_request"))return "근무일, 출퇴근 시각과 사유를 확인해 주세요.";return "근태 정정 요청을 보내지 못했어요. 잠시 후 다시 시도해 주세요.";}
+
+export function EmployeeCorrectionRequest({context,attendance}:{context:MobileRoleContext;attendance:TodayAttendance|null}){
+  const [requests,setRequests]=useState<AttendanceCorrectionRequest[]>([]),[open,setOpen]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState("");
+  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
+  const [draft,setDraft]=useState<AttendanceCorrectionRequestDraft>({workDate:"",checkedIn:"",checkedOut:"",reason:""});
+  useUpdateSafetyBlocker("attendance-correction-request","근태 정정 요청을 저장 중이에요",saving);
+  const refresh=useCallback(async()=>{try{setRequests(await loadAttendanceCorrectionRequests(getSupabaseBrowserClient(),context.organizationId));}catch{/* Attendance remains usable when history is temporarily unavailable. */}},[context.organizationId]);
+  useEffect(()=>{const timer=window.setTimeout(()=>void refresh(),0);const onFocus=()=>void refresh();const onVisible=()=>{if(document.visibilityState==="visible")void refresh();};window.addEventListener("focus",onFocus);document.addEventListener("visibilitychange",onVisible);return()=>{window.clearTimeout(timer);window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onVisible);};},[refresh]);
+  function start(){const timezone=attendance?.timezone??"Asia/Seoul";setMessage("");setRequestKey(crypto.randomUUID());setDraft({workDate:attendance?.workDate??"",checkedIn:localClock(attendance?.checkedInAt??null,timezone),checkedOut:localClock(attendance?.checkedOutAt??null,timezone),reason:""});setOpen(true);}
+  async function submit(){const validation=validateCorrectionRequest(draft);if(validation){setMessage(validation);return;}setSaving(true);setMessage("");try{await submitAttendanceCorrectionRequest(getSupabaseBrowserClient(),context.organizationId,attendance?.timezone??"Asia/Seoul",draft,requestKey);await refresh();setOpen(false);setMessage("근태 정정 요청을 보냈어요. 관리자 처리 결과는 알림으로 안내해 드릴게요.");}catch(error){setMessage(requestError(error));}finally{setSaving(false);}}
+  const latest=requests[0];
+  return <><section className="employee-correction-card"><div><div><span>기록이 실제와 다른가요?</span><h3>근태 기록 정정 요청</h3></div><button className="secondary-button" onClick={start}>요청 작성</button></div><p>QR 출퇴근과 별도로 관리자에게 변경할 시각과 사유를 전달합니다.</p>{latest&&<div className="employee-correction-status"><span>{latest.work_date} 최근 요청</span><strong className={latest.status}>{requestStatus[latest.status]}{latest.review_comment?` · ${latest.review_comment}`:""}</strong></div>}{message&&<p className="employee-correction-message" role="status">{message}</p>}</section>{open&&<div className="employee-correction-modal" role="dialog" aria-modal="true" aria-label="근태 정정 요청"><div className="employee-correction-sheet"><header><div><span>관리자 승인 요청</span><h2>근태 기록 정정</h2></div><button aria-label="닫기" onClick={()=>!saving&&setOpen(false)}>×</button></header><div className="employee-correction-form"><label>근무일<input type="date" max={attendance?.workDate} value={draft.workDate} onChange={event=>{const workDate=event.target.value;setDraft({...draft,workDate,checkedIn:workDate===attendance?.workDate?localClock(attendance.checkedInAt,attendance.timezone):"",checkedOut:workDate===attendance?.workDate?localClock(attendance.checkedOutAt,attendance.timezone):""});}}/></label><div><label>변경할 출근 시각<input type="time" value={draft.checkedIn} onChange={event=>setDraft({...draft,checkedIn:event.target.value})}/></label><label>변경할 퇴근 시각<input type="time" value={draft.checkedOut} onChange={event=>setDraft({...draft,checkedOut:event.target.value})}/></label></div><label>정정 사유<input maxLength={500} value={draft.reason} onChange={event=>setDraft({...draft,reason:event.target.value})} placeholder="예: 실제 퇴근은 22:10이었어요"/></label>{message&&<p className="employee-correction-message" role="alert">{message}</p>}<button className="primary-button" disabled={saving} onClick={()=>void submit()}>{saving?"요청 중…":"관리자에게 요청"}</button></div></div></div>}</>;
+}

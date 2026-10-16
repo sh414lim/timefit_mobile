@@ -10,6 +10,7 @@ import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
 import { classifyRequestFailure, isAmbiguousWriteFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
 import { useUpdateSafetyBlocker } from "@/pwa/update-safety";
+import { EmployeeCorrectionRequest } from "@/components/employee-correction-request";
 
 type Recovery = { token: string; requestKey: string };
 
@@ -152,6 +153,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       {pendingScan && <div className="qr-scan-confirmation" role="alert"><strong>{actionLabel}을 처리할까요?</strong><p>스캔한 QR이 맞는지 확인한 뒤 버튼을 눌러 주세요.</p><div><button type="button" className="secondary-button" onClick={() => { setPendingScan(null); setScanning(true); }}>다시 스캔</button><button type="button" className="primary-button" disabled={busy} onClick={() => void submit(pendingScan)}>{actionLabel} 확인</button></div></div>}
       {recovery && <div className="request-recovery" role="alert"><span>출퇴근 저장 여부를 다시 확인해야 해요.</span><button disabled={busy || !isBrowserOnline()} onClick={() => void submit(undefined, recovery)}>저장 여부 확인</button></div>}
     </div>
+    <EmployeeCorrectionRequest context={context} attendance={state}/>
     {diagnosticsEnabled && <section className="qr-diagnostics" aria-live="polite">
       <div><span>Android QR 진단</span><button type="button" onClick={() => setDiagnostics([])}>지우기</button></div>
       <p>이 화면에만 임시 표시되며 QR 값·계정정보는 기록하지 않습니다.</p>
