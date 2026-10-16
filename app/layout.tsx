@@ -19,6 +19,7 @@ import "./uiux02.css";
 import "./mgr03.css";
 import "./mgr03-groups.css";
 import "./mgr04.css";
+import "./mgr05.css";
 
 export const metadata: Metadata = {
   title: { default: "TimeFit", template: "%s · TimeFit" },

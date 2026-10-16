@@ -110,7 +110,7 @@ function ManagerHome({ context, navigate }: { context: MobileRoleContext; naviga
     {Boolean(summary?.failures.length) && <div className="manager-home-warning" role="status">{summary?.failures.map((section) => summaryLabels[section]).join("·")} 요약은 갱신하지 못했어요. 불러온 정보만 표시합니다.</div>}
     <div className="manager-summary">
       {summary?.attendance && <button className={attendanceIssueCount ? "danger" : ""} onClick={() => navigate("attendance")}><span>오늘 근태 이상</span><strong>{attendanceIssueCount}<small>건</small></strong><small>미출근 {summary.attendance.counts.missing} · 지각 {summary.attendance.rows.filter((row) => row.late).length}</small></button>}
-      {summary?.approvals && <button className={summary.approvals.counts.pending ? "warning" : ""} onClick={() => navigate("approvals")}><span>승인 대기</span><strong>{summary.approvals.counts.pending}<small>건</small></strong><small>휴가·스케줄 요청</small></button>}
+      {summary?.approvals && <button className={summary.approvals.counts.pending ? "warning" : ""} onClick={() => navigate("approvals")}><span>승인 대기</span><strong>{summary.approvals.counts.pending}<small>건</small></strong><small>휴가·스케줄·근태 요청</small></button>}
       {summary?.attendance && <button onClick={() => navigate("attendance")}><span>현재 근태</span><strong>{summary.attendance.counts.working}<small>명 근무 중</small></strong><small>퇴근 완료 {summary.attendance.counts.completed}명</small></button>}
       {summary?.staffing && <button className={shortageCount ? "danger" : ""} onClick={() => navigate("schedule")}><span>오늘·내일 인력</span><strong>{summary.staffing.configured ? `${shortageCount}명 부족` : "기준 미설정"}</strong><small>{summary.staffing.configured ? `예정 ${summary.staffing.days.reduce((total, day) => total + day.scheduled_count, 0)}명` : "관리자 웹에서 필요 인원을 설정해 주세요"}</small></button>}
     </div>
@@ -232,7 +232,7 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
     employees: { eyebrow: "권한 범위 내 직원", title: "직원", description: "근태·일정·휴가를 한곳에서 확인하고 필요한 기록을 보정해요." },
     attendance: isEmployee ? { eyebrow: activeContext.organizationName, title: "QR 출퇴근", description: "매장 QR로 오늘 출퇴근을 안전하게 기록해요." } : { eyebrow: "오늘 운영", title: "근태 현황", description: "직원별 출퇴근 상태와 예외를 확인해요." },
     requests: { eyebrow: "휴가·근무 변경", title: "요청", description: "잔여 연차와 요청 처리 상태를 확인해요." },
-    approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가와 근무 변경 요청을 검토해요." },
+    approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가·스케줄·근태 정정 요청을 한곳에서 검토해요." },
     notifications: { eyebrow: "업무 변경 안내", title: "알림", description: "내가 확인해야 할 변화를 모아 보여드려요." },
     more: { eyebrow: "계정과 앱 설정", title: "전체", description: "보조 업무와 앱 설정을 관리해요." }
   };
