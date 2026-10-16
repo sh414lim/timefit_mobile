@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { clearPrivateBrowserData } from "@/auth/session-storage";
 import type { UserContext } from "@/auth/user-context";
 import { NetworkBanner } from "@/components/network-banner";
-import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection, type NavigationItem } from "@/authorization/mobile-context";
+import { canAccessSection, deriveMobileContexts, primaryNavigation, primarySectionOrder, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection, type NavigationItem } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { loadNotifications } from "@/notifications/inbox";
 import { canEnablePush, enableSchedulePush } from "@/notifications/push";
@@ -50,17 +50,6 @@ const sectionIcons: Partial<Record<MobileSection, IconName>> = {
   home: "home", schedule: "calendar", attendance: "clock", requests: "request", approvals: "approval", notifications: "bell", more: "menu", employees: "users", workplaces: "store"
 };
 
-const primaryOrder: Record<MobileRoleContext["role"], MobileSection[]> = {
-  employee: ["home", "schedule", "attendance", "requests", "more"],
-  sub_manager: ["home", "attendance", "approvals", "notifications", "more"],
-  operations_lead: ["home", "attendance", "approvals", "notifications", "more"],
-  owner: ["home", "attendance", "approvals", "notifications", "more"]
-};
-
-function primaryNavigation(context: MobileRoleContext, items: NavigationItem[]) {
-  return primaryOrder[context.role].map((section) => items.find((item) => item.section === section)).filter((item): item is NavigationItem => Boolean(item));
-}
-
 function EmployeeHome({ context, displayName, navigate }: { context: MobileRoleContext; displayName: string; navigate: (section: MobileSection) => void }) {
   return <section className="dashboard-home">
     <article className="action-hero">
@@ -79,6 +68,7 @@ function EmployeeHome({ context, displayName, navigate }: { context: MobileRoleC
 function ManagerHome({ context, navigate }: { context: MobileRoleContext; navigate: (section: MobileSection) => void }) {
   const canReview = canAccessSection(context, "approvals");
   const canViewAttendance = canAccessSection(context, "attendance");
+  const canViewSchedule = canAccessSection(context, "schedule");
   return <section className="dashboard-home">
     <div className="manager-summary">
       {canViewAttendance && <button onClick={() => navigate("attendance")}><span>오늘 근태</span><strong>직원별 현황</strong><small>출근·퇴근·누락 확인</small></button>}
@@ -87,6 +77,7 @@ function ManagerHome({ context, navigate }: { context: MobileRoleContext; naviga
     <div className="dashboard-section-heading"><h2>우선 확인</h2><span>{context.organizationName}</span></div>
     <div className="dashboard-list">
       {canViewAttendance && <button onClick={() => navigate("attendance")}><span className="menu-icon red"><Icon name="alert" /></span><span><strong>근태 예외 확인</strong><small>지각·누락·장시간 근무를 먼저 확인해요</small></span><Icon name="chevron" /></button>}
+      {canViewSchedule && <button onClick={() => navigate("schedule")}><span className="menu-icon blue"><Icon name="calendar" /></span><span><strong>직원 스케줄</strong><small>근무 일정과 변경이 필요한 항목을 확인해요</small></span><Icon name="chevron" /></button>}
       {canReview && <button onClick={() => navigate("approvals")}><span className="menu-icon amber"><Icon name="approval" /></span><span><strong>승인 대기 요청</strong><small>직원 요청을 검토하고 결과를 알려요</small></span><Icon name="chevron" /></button>}
     </div>
   </section>;
@@ -94,10 +85,10 @@ function ManagerHome({ context, navigate }: { context: MobileRoleContext; naviga
 
 function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRoleContext; items: NavigationItem[]; onSignOut: () => Promise<void>; navigate: (section: MobileSection) => void }) {
   const isEmployee = context.role === "employee";
-  const secondary = items.filter((item) => !primaryOrder[context.role].includes(item.section) && item.section !== "home");
+  const secondary = items.filter((item) => !primarySectionOrder[context.role].includes(item.section) && item.section !== "home" && item.section !== "notifications");
   return <section className="more-menu">
     <article className="account-card"><span className="account-avatar">{isEmployee ? "직" : "관"}</span><div><strong>{roleLabels[context.role]}</strong><small>{context.organizationName}</small></div><span className="role-chip">{roleLabels[context.role]}</span></article>
-    {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 계정·소속·권한" : item.section === "schedule" ? "근무 일정 편성·변경" : item.section === "workplaces" ? "사업장과 QR 관리" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
+    {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 계정·소속·권한" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
     <div className="dashboard-section-heading"><h2>계정과 앱</h2></div>
     <PushSettingsCard isManager={!isEmployee} />
     <div className="dashboard-list">
@@ -222,13 +213,13 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
         : section === "requests" && isEmployee ? <EmployeeLeave context={activeContext} userContext={userContext} />
         : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />
-        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
+        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} />
         : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate} onUnreadCountChange={setUnreadCount} />
         : section === "more" ? <MoreMenu context={activeContext} items={items} onSignOut={onSignOut} navigate={navigate} />
-        : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label}</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}
+        : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label} 기능을 준비하고 있어요</strong><p>{section === "schedule" ? "단일 사업장의 직원 일정 편성 기능을 연결 중입니다. 현재는 관리자 웹에서 처리해 주세요." : "웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다."}</p></div>}
     </section>}
     <nav className={`bottom-nav ${isEmployee ? "employee-nav" : "manager-nav"}`} style={{ "--nav-items": primaryItems.length } as CSSProperties} aria-label="주요 메뉴">
-      {primaryItems.map((item) => { const selected = (section === item.section || (isEmployee && section === "notifications" && item.section === "more")) && !deniedSection; return <button key={item.section} className={`${selected ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={selected ? "page" : undefined}>
+      {primaryItems.map((item) => { const selected = (section === item.section || (section === "notifications" && item.section === "more")) && !deniedSection; return <button key={item.section} className={`${selected ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={selected ? "page" : undefined}>
         {item.section === "attendance" && isEmployee ? <span className="qr-nav-icon"><Icon name="scan" /></span> : <Icon name={sectionIcons[item.section] ?? "menu"} />}
         <span>{item.section === "attendance" && isEmployee ? "QR" : item.label}</span>
       </button>;})}

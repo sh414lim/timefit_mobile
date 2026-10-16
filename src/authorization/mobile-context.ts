@@ -37,10 +37,18 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "more", label: "전체" }
   ],
   owner: [
-    { section: "home", label: "운영 홈" }, { section: "workplaces", label: "사업장" },
+    { section: "home", label: "운영 홈" }, { section: "employees", label: "직원" },
     { section: "attendance", label: "근태" },
+    { section: "schedule", label: "스케줄" },
     { section: "approvals", label: "승인" }, { section: "notifications", label: "알림" }, { section: "more", label: "전체" }
   ]
+};
+
+export const primarySectionOrder: Record<MobileRole, MobileSection[]> = {
+  employee: ["home", "schedule", "attendance", "requests", "more"],
+  sub_manager: ["home", "attendance", "schedule", "approvals", "more"],
+  operations_lead: ["home", "attendance", "schedule", "approvals", "more"],
+  owner: ["home", "attendance", "schedule", "approvals", "more"]
 };
 
 export const roleLabels: Record<MobileRole, string> = {
@@ -72,12 +80,14 @@ export function visibleNavigation(context: MobileRoleContext): NavigationItem[] 
   return navigation[context.role].filter((item) => !item.requiredAny || item.requiredAny.some((permission) => context.permissions.includes(permission)));
 }
 
-export function hasAnyManagementPermission(context: MobileRoleContext, requiredAny: string[]) {
-  return context.role === "owner" || requiredAny.some((permission) => context.permissions.includes(permission));
+export function primaryNavigation(context: MobileRoleContext, items = visibleNavigation(context)): NavigationItem[] {
+  return primarySectionOrder[context.role]
+    .map((section) => items.find((item) => item.section === section))
+    .filter((item): item is NavigationItem => Boolean(item));
 }
 
-export function canManageAttendanceQr(context: MobileRoleContext) {
-  return hasAnyManagementPermission(context, ["attendance.manage"]);
+export function hasAnyManagementPermission(context: MobileRoleContext, requiredAny: string[]) {
+  return context.role === "owner" || requiredAny.some((permission) => context.permissions.includes(permission));
 }
 
 export function canAccessSection(context: MobileRoleContext, section: string): section is MobileSection {

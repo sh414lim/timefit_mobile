@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessSection, canManageAttendanceQr, deriveMobileContexts, hasAnyManagementPermission, visibleNavigation } from "../src/authorization/mobile-context";
+import { canAccessSection, deriveMobileContexts, hasAnyManagementPermission, primaryNavigation, visibleNavigation } from "../src/authorization/mobile-context";
 import type { UserContext } from "../src/auth/user-context";
 
 const employee: UserContext = {
@@ -39,7 +39,9 @@ describe("mobile role contexts", () => {
   it("gives owners the owner shell without granting it to managers", () => {
     const contexts = deriveMobileContexts({ ...employee, isOrganizationOwner: true });
     expect(contexts.map((context) => context.role)).toContain("owner");
-    expect(visibleNavigation(contexts.find((context) => context.role === "owner")!).map((item) => item.label)).toEqual(["운영 홈", "사업장", "근태", "승인", "알림", "전체"]);
+    const owner = contexts.find((context) => context.role === "owner")!;
+    expect(visibleNavigation(owner).map((item) => item.label)).toEqual(["운영 홈", "직원", "근태", "스케줄", "승인", "알림", "전체"]);
+    expect(canAccessSection(owner, "workplaces")).toBe(false);
   });
 
   it("omits suspended management contexts", () => {
@@ -47,18 +49,19 @@ describe("mobile role contexts", () => {
     expect(contexts.map((context) => context.role)).toEqual(["employee"]);
   });
 
-  it("keeps attendance QR management hidden from view-only managers", () => {
+  it("keeps manager bottom navigation stable and moves notifications to the header", () => {
     const contexts = deriveMobileContexts({ ...employee, managementAccount: { id: "manager", staff_id: "staff", role_code: "manager", status: "active", permissions: ["attendance.view"], categoryScopes: [] } });
     const manager = contexts.find((context) => context.role === "sub_manager")!;
     expect(canAccessSection(manager, "attendance")).toBe(true);
-    expect(canManageAttendanceQr(manager)).toBe(false);
     expect(hasAnyManagementPermission(manager, ["attendance.view"])).toBe(true);
+    expect(primaryNavigation(manager).map((item) => item.section)).toEqual(["home", "attendance", "more"]);
+    expect(primaryNavigation(manager).some((item) => item.section === "notifications")).toBe(false);
   });
 
-  it("allows owners and attendance managers to manage attendance QR", () => {
-    const manager = deriveMobileContexts({ ...employee, managementAccount: { id: "manager", staff_id: "staff", role_code: "manager", status: "active", permissions: ["attendance.manage"], categoryScopes: [] } }).find((context) => context.role === "sub_manager")!;
+  it("uses the same five-item manager navigation order when all features are available", () => {
+    const manager = deriveMobileContexts({ ...employee, managementAccount: { id: "manager", staff_id: "staff", role_code: "manager", status: "active", permissions: ["attendance.manage", "schedule.manage", "leave.review"], categoryScopes: [] } }).find((context) => context.role === "sub_manager")!;
     const owner = deriveMobileContexts({ ...employee, isOrganizationOwner: true }).find((context) => context.role === "owner")!;
-    expect(canManageAttendanceQr(manager)).toBe(true);
-    expect(canManageAttendanceQr(owner)).toBe(true);
+    expect(primaryNavigation(manager).map((item) => item.section)).toEqual(["home", "attendance", "schedule", "approvals", "more"]);
+    expect(primaryNavigation(owner).map((item) => item.section)).toEqual(["home", "attendance", "schedule", "approvals", "more"]);
   });
 });
