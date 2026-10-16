@@ -18,6 +18,7 @@ const EmployeeLeave = dynamic(() => import("@/components/employee-leave").then((
 const ManagerApprovals = dynamic(() => import("@/components/manager-approvals").then((module) => module.ManagerApprovals), { loading: FeatureLoading });
 const ManagerAttendance = dynamic(() => import("@/components/manager-attendance").then((module) => module.ManagerAttendance), { loading: FeatureLoading });
 const ManagerSchedule = dynamic(() => import("@/components/manager-schedule").then((module) => module.ManagerSchedule), { loading: FeatureLoading });
+const ManagerEmployees = dynamic(() => import("@/components/manager-employees").then((module) => module.ManagerEmployees), { loading: FeatureLoading });
 const EmployeeAttendance = dynamic(() => import("@/components/employee-attendance").then((module) => module.EmployeeAttendance), { loading: FeatureLoading });
 const NotificationInbox = dynamic(() => import("@/components/notification-inbox").then((module) => module.NotificationInbox), { loading: FeatureLoading });
 
@@ -228,6 +229,7 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
   const isEmployee = activeContext.role === "employee";
   const pageLabels: Partial<Record<MobileSection, { eyebrow: string; title: string; description: string }>> = {
     schedule: isEmployee ? { eyebrow: "내 근무 일정", title: "일정", description: "확정 일정과 변경 내역을 한눈에 확인해요." } : { eyebrow: "직원 근무 편성", title: "스케줄", description: "주간 일정과 충돌을 확인하고 직원 근무를 관리해요." },
+    employees: { eyebrow: "권한 범위 내 직원", title: "직원", description: "근태·일정·휴가를 한곳에서 확인하고 필요한 기록을 보정해요." },
     attendance: isEmployee ? { eyebrow: activeContext.organizationName, title: "QR 출퇴근", description: "매장 QR로 오늘 출퇴근을 안전하게 기록해요." } : { eyebrow: "오늘 운영", title: "근태 현황", description: "직원별 출퇴근 상태와 예외를 확인해요." },
     requests: { eyebrow: "휴가·근무 변경", title: "요청", description: "잔여 연차와 요청 처리 상태를 확인해요." },
     approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가와 근무 변경 요청을 검토해요." },
@@ -250,10 +252,11 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
       {section === "home" ? (isEmployee ? <EmployeeHome context={activeContext} displayName={displayName} navigate={navigate} /> : <ManagerHome context={activeContext} navigate={navigate} />)
         : section === "schedule" && isEmployee ? <EmployeeSchedule context={activeContext} userContext={userContext} />
         : section === "schedule" ? <ManagerSchedule context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
+        : section === "employees" ? <ManagerEmployees context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "requests" && isEmployee ? <EmployeeLeave context={activeContext} userContext={userContext} />
         : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />
-        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} />
+        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} onOpenStaff={(staffId,date) => navigate("employees", `/#employees?staff=${staffId}&date=${date}`)} />
         : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate} onUnreadCountChange={setUnreadCount} />
         : section === "more" ? <MoreMenu context={activeContext} items={items} onSignOut={onSignOut} navigate={navigate} />
         : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label} 기능을 준비하고 있어요</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}

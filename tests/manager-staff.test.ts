@@ -1,0 +1,13 @@
+import {describe,expect,it,vi} from "vitest";
+import {readFileSync} from "node:fs";
+import {correctStaffAttendance,loadStaffDetail,loadStaffDirectory,staffDirectoryCacheKey,validateAttendanceCorrection,zonedDateTimeToIso} from "../src/employees/manager-staff";
+
+const component=readFileSync(new URL("../src/components/manager-employees.tsx",import.meta.url),"utf8");
+describe("manager staff detail",()=>{
+  it("uses scoped directory and detail RPCs",async()=>{const rpc=vi.fn().mockResolvedValue({data:{data:{staff:[],categories:[]},meta:{}},error:null});await loadStaffDirectory({rpc} as never,"org");expect(rpc).toHaveBeenCalledWith("timefit_user_mobile_manager_staff_directory",expect.objectContaining({p_organization_id:"org"}));rpc.mockResolvedValueOnce({data:{data:{basic:{},capabilities:{}},meta:{}},error:null});await loadStaffDetail({rpc} as never,"org","staff","2026-10-16");expect(rpc).toHaveBeenLastCalledWith("timefit_user_mobile_manager_staff_detail",expect.objectContaining({p_staff_id:"staff"}));});
+  it("converts workplace-local clocks to instants",()=>{expect(zonedDateTimeToIso("2026-10-16","09:30","Asia/Seoul")).toBe("2026-10-16T00:30:00.000Z");});
+  it("validates a reason before attendance correction",()=>{expect(validateAttendanceCorrection({staffId:"s",workDate:"2026-10-16",checkedIn:"09:00",checkedOut:"18:00",reason:"" ,expectedUpdatedAt:null})).toContain("사유");});
+  it("sends optimistic state and idempotency key",async()=>{const rpc=vi.fn().mockResolvedValue({data:{record:{},duplicate:false},error:null});await correctStaffAttendance({rpc} as never,"org","Asia/Seoul",{staffId:"s",workDate:"2026-10-16",checkedIn:"09:00",checkedOut:"18:00",reason:"누락 보정",expectedUpdatedAt:"stamp"},"key");expect(rpc).toHaveBeenCalledWith("timefit_user_mobile_manager_correct_attendance",expect.objectContaining({p_expected_updated_at:"stamp",p_request_key:"key"}));});
+  it("links a clock-out earlier than clock-in to the next day",async()=>{const rpc=vi.fn().mockResolvedValue({data:{record:{},duplicate:false},error:null});await correctStaffAttendance({rpc} as never,"org","Asia/Seoul",{staffId:"s",workDate:"2026-10-16",checkedIn:"22:00",checkedOut:"06:00",reason:"야간 퇴근",expectedUpdatedAt:null},"key");expect(rpc).toHaveBeenCalledWith("timefit_user_mobile_manager_correct_attendance",expect.objectContaining({p_checked_out_at:"2026-10-16T21:00:00.000Z"}));});
+  it("isolates caches and requires fresh manage permission in the UI",()=>{expect(staffDirectoryCacheKey("a","o")).not.toBe(staffDirectoryCacheKey("b","o"));expect(component).toContain('requireFreshManagementAuthorization(client,context.organizationId,["attendance.manage"])');expect(component).toContain("최종 확인");});
+});
