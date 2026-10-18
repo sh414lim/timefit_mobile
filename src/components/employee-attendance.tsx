@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { formatClock } from "@/attendance/manager-attendance";
-import { attendanceScanDisabled, loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
+import { attendanceNeedsWorkdayRefresh, attendanceScanDisabled, loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
 import { createQrDiagnosticEvent, qrDiagnosticsEnabled, type QrDiagnosticEvent, type QrDiagnosticStage } from "@/attendance/qr-diagnostics";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
@@ -72,6 +72,16 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
     };
   }, [addDiagnostic, refresh]);
 
+  useEffect(() => {
+    if (!state?.workDate) return;
+    const refreshOnNewWorkday = () => {
+      if (attendanceNeedsWorkdayRefresh(state)) void refresh();
+    };
+    refreshOnNewWorkday();
+    const timer = window.setInterval(refreshOnNewWorkday, 30_000);
+    return () => window.clearInterval(timer);
+  }, [refresh, state]);
+
   const submit = useCallback(async (scannedValue?: string, retry?: Recovery) => {
     if (busyRef.current || state?.nextAction === "completed" || state?.nextAction === "review_required") {
       if (diagnosticsEnabled) addDiagnostic("rpc_skipped", !state ? "attendance_state_unavailable" : `next=${state.nextAction}`);
@@ -106,7 +116,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       if (diagnosticsEnabled) addDiagnostic("rpc_succeeded", `action=${result.action ?? result.nextAction}, duplicate=${Boolean(result.duplicate)}`);
       setState((current) => current ? { ...current, ...result } : result);
       reportNetworkSuccess(result.serverTime); setRecovery(null); requestKeyRef.current = crypto.randomUUID();
-      setMessage(result.action === "review_required" ? "이전 근무가 18시간을 초과해 관리자 확인이 필요해요." : result.duplicate ? `이미 처리된 ${result.action === "check_out" ? "퇴근" : "출근"} 기록을 확인했어요.` : result.action === "check_out" ? "퇴근 기록을 서버에 저장했어요." : "출근 기록을 서버에 저장했어요.");
+      setMessage(result.previousNeedsReview ? "오늘 출근을 저장했어요. 전날 미퇴근 기록은 관리자 확인 대상으로 남겼어요." : result.action === "review_required" ? "이전 근무가 18시간을 초과해 관리자 확인이 필요해요." : result.duplicate ? `이미 처리된 ${result.action === "check_out" ? "퇴근" : "출근"} 기록을 확인했어요.` : result.action === "check_out" ? "퇴근 기록을 서버에 저장했어요." : "출근 기록을 서버에 저장했어요.");
       window.history.replaceState(null, "", `${window.location.pathname}#attendance`);
       await refresh();
     } catch (error) {
