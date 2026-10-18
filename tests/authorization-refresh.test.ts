@@ -6,16 +6,19 @@ const authGate = readFileSync(new URL("../src/components/auth-gate.tsx", import.
 describe("delegated authorization refresh", () => {
   it("reloads user context when the installed app becomes active", () => {
     expect(authGate).toContain('window.addEventListener("focus", refreshActiveContext)');
+    expect(authGate).toContain('window.addEventListener("online", refreshActiveContext)');
     expect(authGate).toContain('document.addEventListener("visibilitychange", handleVisibility)');
-    expect(authGate).toContain("await resolveSession(data.session, true)");
+    expect(authGate).toContain("await resolveSession(await getDurableSession(client), true)");
   });
 
   it("keeps the last usable screen during a transient background refresh failure", () => {
     expect(authGate).toContain('if (!background) setScreen("error")');
+    expect(authGate).toContain("event === \"SIGNED_OUT\" && !intentionalSignOut.current");
+    expect(authGate).toContain("SIGNED_OUT_RECOVERY_DELAY_MS");
   });
 
   it("exposes a fresh context check to important manager actions", () => {
     expect(authGate).toContain("onRefreshAuthorization={refreshActiveContext}");
-    expect(authGate).toContain("return await resolveSession(data.session, true)");
+    expect(authGate).toContain("return await resolveSession(await getDurableSession(client), true)");
   });
 });
