@@ -178,7 +178,7 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
     </div>
     <div className="camera-preview">
       <video ref={videoRef} muted playsInline autoPlay aria-label="QR 스캔 카메라 화면" />
-      {!error && <><div className="camera-frame" aria-hidden="true"/><p>QR 인식 후 출근·퇴근을 한 번 더 확인합니다.</p></>}
+      {!error && <><div className="camera-frame" aria-hidden="true"/><p>QR을 인식하면 서버 시각으로 즉시 기록합니다.</p></>}
       {needsHelp && !error && !busy && <div className="camera-scan-help" role="status"><strong>QR이 잘 보이지 않아요</strong><span>QR 전체가 네모 안에 들어오도록 20~30cm 떨어지고, 화면 반사를 피해주세요.</span></div>}
       {error && <div className="camera-error" role="alert"><strong>카메라를 사용할 수 없어요</strong><p>{error}</p><button type="button" className="secondary-button" onClick={onCancel}>직접 입력하기</button></div>}
       {busy && <div className="camera-busy" role="status"><span/><strong>출퇴근을 처리하고 있어요</strong></div>}
