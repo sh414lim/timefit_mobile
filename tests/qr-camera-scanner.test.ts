@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { androidQrCameraConstraints, cameraErrorMessage, compatibleQrCameraConstraints, preferredQrCameraConstraints, qrDecodeHints } from "../src/components/qr-camera-scanner";
+import { androidQrCameraConstraints, CAMERA_PREVIEW_HEALTH_TIMEOUT_MS, cameraErrorMessage, compatibleQrCameraConstraints, preferredQrCameraConstraints, qrDecodeHints } from "../src/components/qr-camera-scanner";
 
 describe("Android QR camera scanner", () => {
   it("requests the rear camera first and keeps safe compatibility fallbacks", () => {
@@ -15,6 +15,10 @@ describe("Android QR camera scanner", () => {
   it("restricts decoding to QR codes and enables the harder scan path", () => {
     expect(qrDecodeHints.get(DecodeHintType.POSSIBLE_FORMATS)).toEqual([BarcodeFormat.QR_CODE]);
     expect(qrDecodeHints.get(DecodeHintType.TRY_HARDER)).toBe(true);
+  });
+
+  it("keeps black-preview recovery short so the camera appears without a long wait", () => {
+    expect(CAMERA_PREVIEW_HEALTH_TIMEOUT_MS).toBeLessThanOrEqual(1500);
   });
 
   it("keeps actionable camera permission guidance", () => {

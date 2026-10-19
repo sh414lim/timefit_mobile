@@ -46,6 +46,8 @@ export const compatibleQrCameraConstraints: MediaStreamConstraints = {
   video: true,
 };
 
+export const CAMERA_PREVIEW_HEALTH_TIMEOUT_MS = 1500;
+
 export const qrDecodeHints = new Map<DecodeHintType, unknown>([
   [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]],
   [DecodeHintType.TRY_HARDER, true],
@@ -76,7 +78,7 @@ function safeErrorName(error: unknown) {
   return String((error as { name?: string }).name || "UnknownError").slice(0, 80);
 }
 
-export async function waitForCameraPreview(video: HTMLVideoElement | null, timeoutMs = 4000) {
+export async function waitForCameraPreview(video: HTMLVideoElement | null, timeoutMs = CAMERA_PREVIEW_HEALTH_TIMEOUT_MS) {
   if (!video) return false;
   const startedAt = performance.now();
   while (performance.now() - startedAt < timeoutMs) {
@@ -85,7 +87,7 @@ export async function waitForCameraPreview(video: HTMLVideoElement | null, timeo
     if (track?.readyState === "live" && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
       return true;
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 100));
+    await new Promise((resolve) => window.setTimeout(resolve, 40));
   }
   return false;
 }
@@ -142,7 +144,15 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
             return;
           }
           controlsRef.current = controls;
-          const hasPreview = await waitForCameraPreview(videoRef.current);
+          const video = videoRef.current;
+          const stream = video?.srcObject;
+          const hasLiveTrack = stream instanceof MediaStream && stream.getVideoTracks().some((track) => track.readyState === "live");
+          if (hasLiveTrack) {
+            // 스트림이 연결되면 프레임 검증을 기다리지 않고 즉시 카메라 화면을 보여준다.
+            setPreviewReady(true);
+            void video?.play().catch(() => undefined);
+          }
+          const hasPreview = await waitForCameraPreview(video);
           if (!hasPreview && !handledRef.current) {
             onDiagnostic?.("camera_error", `PreviewTimeout, profile=${index + 1}`);
             controls.stop();
@@ -211,7 +221,17 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
       <button type="button" className="camera-close" onClick={onCancel} aria-label="카메라 닫기">×</button>
     </div>
     <div className="camera-preview">
-      <video ref={videoRef} muted playsInline autoPlay disablePictureInPicture aria-label="QR 스캔 카메라 화면" />
+      <video
+        ref={videoRef}
+        muted
+        playsInline
+        autoPlay
+        disablePictureInPicture
+        aria-label="QR 스캔 카메라 화면"
+        onLoadedMetadata={() => setPreviewReady(true)}
+        onLoadedData={() => setPreviewReady(true)}
+        onPlaying={() => setPreviewReady(true)}
+      />
       {!previewReady && !error && <div className="camera-preview-loading" role="status"><span/><strong>카메라 화면을 준비하고 있어요</strong></div>}
       {!error && <><div className="camera-frame" aria-hidden="true"/><p>QR을 인식하면 서버 시각으로 즉시 기록합니다.</p></>}
       {needsHelp && !error && !busy && <div className="camera-scan-help" role="status"><strong>QR이 잘 보이지 않아요</strong><span>QR 전체가 네모 안에 들어오도록 20~30cm 떨어지고, 화면 반사를 피해주세요.</span></div>}
