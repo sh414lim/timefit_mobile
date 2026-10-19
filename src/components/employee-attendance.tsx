@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { formatClock } from "@/attendance/manager-attendance";
-import { attendanceNeedsWorkdayRefresh, attendanceScanDisabled, loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
+import { attendanceNeedsWorkdayRefresh, attendanceScanDisabled, effectiveAttendanceAction, loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
 import { createQrDiagnosticEvent, qrDiagnosticsEnabled, type QrDiagnosticEvent, type QrDiagnosticStage } from "@/attendance/qr-diagnostics";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
@@ -83,7 +83,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
   }, [refresh, state]);
 
   const submit = useCallback(async (scannedValue?: string, retry?: Recovery) => {
-    if (busyRef.current || state?.nextAction === "completed" || state?.nextAction === "review_required") {
+    if (busyRef.current || effectiveAttendanceAction(state) === "completed") {
       if (diagnosticsEnabled) addDiagnostic("rpc_skipped", !state ? "attendance_state_unavailable" : `next=${state.nextAction}`);
       return;
     }
@@ -140,13 +140,14 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
     void submit(normalizedToken);
   }, [submit]);
 
-  const actionLabel = state?.nextAction === "check_out" ? "퇴근" : "출근";
+  const nextAction = effectiveAttendanceAction(state);
+  const actionLabel = nextAction === "check_out" ? "퇴근" : "출근";
   const scanDisabled = attendanceScanDisabled(state, busy, loadingState);
-  const cameraButtonLabel = busy ? "처리 중…" : loadingState ? "출퇴근 상태 확인 중…" : state?.nextAction === "completed" ? "오늘 출퇴근 완료" : state?.nextAction === "review_required" ? "관리자 확인 필요" : `QR 스캔으로 ${actionLabel}`;
+  const cameraButtonLabel = busy ? "처리 중…" : loadingState ? "출퇴근 상태 확인 중…" : nextAction === "completed" ? "오늘 출퇴근 완료" : `QR 스캔으로 ${actionLabel}`;
   return <section className="employee-attendance">
     <div className="attendance-hero">
       <span>{state?.workDate ?? "오늘"}</span>
-      <h2>{state?.nextAction === "check_in" ? "출근 전" : state?.nextAction === "check_out" ? "근무 중" : state?.nextAction === "review_required" ? "관리자 확인 필요" : "오늘 근무 완료"}</h2>
+      <h2>{nextAction === "check_in" ? "출근 전" : nextAction === "check_out" ? "근무 중" : "오늘 근무 완료"}</h2>
       <div><p>출근 <b>{formatClock(state?.checkedInAt ?? null, state?.timezone ?? "Asia/Seoul")}</b></p><p>퇴근 <b>{formatClock(state?.checkedOutAt ?? null, state?.timezone ?? "Asia/Seoul")}</b></p></div>
     </div>
     <div className="qr-entry">
