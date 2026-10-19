@@ -12,6 +12,14 @@ describe("mobile login identity", () => {
     expect(parseLoginIdentity(" Manager@TimeFit.KR ")).toEqual({ kind: "email", value: "manager@timefit.kr" });
   });
 
+  it("maps a Korean phone number to the matching Buttervilla employee account", () => {
+    const identity = parseLoginIdentity("010-1234-5678");
+    expect(loginCredentials(identity!, "password-value")).toEqual({
+      email: "buttervilla5678@accounts.timefit.local",
+      password: "password-value",
+    });
+  });
+
   it("accepts a Buttervilla employee id and maps it to the private auth email", () => {
     const identity = parseLoginIdentity(" ButterVilla5678 ");
     expect(identity).toEqual({ kind: "employee-id", value: "buttervilla5678" });
