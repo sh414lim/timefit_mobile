@@ -4,6 +4,7 @@ import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { loginCredentials, parseLoginIdentity } from "@/auth/identity";
+import { getDurableSession, SESSION_HEALTHCHECK_INTERVAL_MS, SIGNED_OUT_RECOVERY_DELAY_MS } from "@/auth/session-lifecycle";
 import { clearPrivateBrowserData, reconcileSessionUser } from "@/auth/session-storage";
 import { getSupabaseBrowserClient, hasSupabaseConfig } from "@/auth/supabase";
 import { hasActiveWorkScope, loadUserContext, type UserContext } from "@/auth/user-context";
@@ -26,6 +27,8 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const refreshingContext = useRef(false);
+  const intentionalSignOut = useRef(false);
+  const signedOutRecoveryTimer = useRef<number | null>(null);
 
   const resolveSession = useCallback(async (session: Session | null, background = false): Promise<UserContext | null> => {
     reconcileSessionUser(session?.user.id ?? null);
@@ -47,8 +50,10 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
     refreshingContext.current = true;
     try {
       const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
-      const { data } = await client.auth.getSession();
-      return await resolveSession(data.session, true);
+      return await resolveSession(await getDurableSession(client), true);
+    } catch {
+      // Keep the last usable screen when an installed PWA wakes without a network connection.
+      return null;
     } finally {
       refreshingContext.current = false;
     }
@@ -62,16 +67,43 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
         return;
       }
       const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
-      void client.auth.getSession().then(({ data }) => resolveSession(data.session));
-      const { data } = client.auth.onAuthStateChange((_event, session) => { void resolveSession(session); });
+      void getDurableSession(client)
+        .then((session) => resolveSession(session))
+        .catch(() => {
+          setMessage("로그인 세션을 확인하지 못했습니다. 네트워크 연결 후 다시 시도해 주세요.");
+          setScreen("error");
+        });
+      const { data } = client.auth.onAuthStateChange((event, session) => {
+        if (signedOutRecoveryTimer.current) {
+          window.clearTimeout(signedOutRecoveryTimer.current);
+          signedOutRecoveryTimer.current = null;
+        }
+        if (event === "SIGNED_OUT" && !intentionalSignOut.current) {
+          signedOutRecoveryTimer.current = window.setTimeout(() => {
+            signedOutRecoveryTimer.current = null;
+            void getDurableSession(client)
+              .then((recovered) => resolveSession(recovered))
+              .catch(() => resolveSession(null));
+          }, SIGNED_OUT_RECOVERY_DELAY_MS);
+          return;
+        }
+        void resolveSession(session);
+      });
       const handleVisibility = () => { if (document.visibilityState === "visible") void refreshActiveContext(); };
+      const healthcheck = window.setInterval(() => {
+        if (document.visibilityState === "visible" && navigator.onLine !== false) void refreshActiveContext();
+      }, SESSION_HEALTHCHECK_INTERVAL_MS);
       window.addEventListener("focus", refreshActiveContext);
+      window.addEventListener("online", refreshActiveContext);
       document.addEventListener("visibilitychange", handleVisibility);
       unsubscribe = () => data.subscription.unsubscribe();
       const unsubscribeLifecycle = unsubscribe;
       unsubscribe = () => {
         unsubscribeLifecycle();
+        window.clearInterval(healthcheck);
+        if (signedOutRecoveryTimer.current) window.clearTimeout(signedOutRecoveryTimer.current);
         window.removeEventListener("focus", refreshActiveContext);
+        window.removeEventListener("online", refreshActiveContext);
         document.removeEventListener("visibilitychange", handleVisibility);
       };
     }, 0);
@@ -91,10 +123,13 @@ export function AuthGate({ supabaseUrl, supabaseKey }: AuthGateProps) {
 
   async function signOut() {
     setSubmitting(true);
+    intentionalSignOut.current = true;
     const client = getSupabaseBrowserClient(supabaseUrl, supabaseKey);
     try { await revokePushSubscription(client); } catch { /* Logout must still complete if browser push cleanup fails. */ }
     await client.auth.signOut({ scope: "local" });
     clearPrivateBrowserData();
+    await resolveSession(null);
+    window.setTimeout(() => { intentionalSignOut.current = false; }, SIGNED_OUT_RECOVERY_DELAY_MS);
     setSubmitting(false);
   }
 
