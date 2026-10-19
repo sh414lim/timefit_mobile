@@ -83,7 +83,8 @@ async function sha256File(file: File) {
 }
 
 function safeFileName(value: string) {
-  return value.replace(/[^a-zA-Z0-9가-힣._-]/g, "_");
+  const extension = value.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
+  return `receipt${extension ? `.${extension}` : ""}`;
 }
 
 export async function uploadMobileReceiptForAx(client: SupabaseClient, input: { organizationId: string; file: File; documentDate: string; memo: string }) {

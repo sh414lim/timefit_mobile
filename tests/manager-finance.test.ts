@@ -23,6 +23,12 @@ describe("mobile receipt AX workflow", () => {
     expect(component).toContain("저장하고 AX 분석");
   });
 
+  it("uses an ASCII-only private storage key for Korean Drive file names", () => {
+    const source = readFileSync(new URL("../src/admin/mobile-finance.ts", import.meta.url), "utf8");
+    expect(source).toContain('return `receipt${extension ? `.${extension}` : ""}`');
+    expect(source).not.toContain("[^a-zA-Z0-9가-힣._-]");
+  });
+
   it("proxies authenticated processing to the web AX endpoint", () => {
     expect(route).toContain("https://timefit-omega.vercel.app");
     expect(route).toContain("Authorization: authorization");
