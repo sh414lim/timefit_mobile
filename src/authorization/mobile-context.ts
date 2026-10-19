@@ -1,7 +1,7 @@
 import type { UserContext } from "@/auth/user-context";
 
 export type MobileRole = "employee" | "sub_manager" | "operations_lead" | "owner";
-export type MobileSection = "home" | "employees" | "schedule" | "attendance" | "requests" | "approvals" | "workplaces" | "notifications" | "more";
+export type MobileSection = "home" | "employees" | "schedule" | "attendance" | "requests" | "approvals" | "payroll" | "finance" | "workplaces" | "notifications" | "more";
 
 export type MobileRoleContext = {
   id: string;
@@ -25,6 +25,8 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "attendance", label: "근태", requiredAny: ["attendance.view", "attendance.manage", "attendance.review_correction"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view", "schedule.manage", "schedule.approve"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
+    { section: "payroll", label: "급여", requiredAny: ["payroll.view", "payroll.manage"] },
+    { section: "finance", label: "지출 증빙", requiredAny: ["finance.view", "expense.manage", "expense.receipt.review"] },
     { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
@@ -33,6 +35,8 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "attendance", label: "근태", requiredAny: ["attendance.view", "attendance.manage", "attendance.review_correction"] },
     { section: "schedule", label: "스케줄", requiredAny: ["schedule.view", "schedule.manage", "schedule.approve"] },
     { section: "approvals", label: "승인", requiredAny: ["leave.review", "attendance.review_correction", "schedule.approve"] },
+    { section: "payroll", label: "급여", requiredAny: ["payroll.view", "payroll.manage"] },
+    { section: "finance", label: "지출 증빙", requiredAny: ["finance.view", "expense.manage", "expense.receipt.review"] },
     { section: "notifications", label: "알림" },
     { section: "more", label: "전체" }
   ],
@@ -40,7 +44,7 @@ const navigation: Record<MobileRole, NavigationItem[]> = {
     { section: "home", label: "운영 홈" }, { section: "employees", label: "직원" },
     { section: "attendance", label: "근태" },
     { section: "schedule", label: "스케줄" },
-    { section: "approvals", label: "승인" }, { section: "notifications", label: "알림" }, { section: "more", label: "전체" }
+    { section: "approvals", label: "승인" }, { section: "payroll", label: "급여" }, { section: "finance", label: "지출 증빙" }, { section: "notifications", label: "알림" }, { section: "more", label: "전체" }
   ]
 };
 

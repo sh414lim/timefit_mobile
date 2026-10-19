@@ -19,6 +19,8 @@ const ManagerApprovals = dynamic(() => import("@/components/manager-approvals").
 const ManagerAttendance = dynamic(() => import("@/components/manager-attendance").then((module) => module.ManagerAttendance), { loading: FeatureLoading });
 const ManagerSchedule = dynamic(() => import("@/components/manager-schedule").then((module) => module.ManagerSchedule), { loading: FeatureLoading });
 const ManagerEmployees = dynamic(() => import("@/components/manager-employees").then((module) => module.ManagerEmployees), { loading: FeatureLoading });
+const ManagerPayroll = dynamic(() => import("@/components/manager-payroll").then((module) => module.ManagerPayroll), { loading: FeatureLoading });
+const ManagerFinance = dynamic(() => import("@/components/manager-finance").then((module) => module.ManagerFinance), { loading: FeatureLoading });
 const EmployeeAttendance = dynamic(() => import("@/components/employee-attendance").then((module) => module.EmployeeAttendance), { loading: FeatureLoading });
 const NotificationInbox = dynamic(() => import("@/components/notification-inbox").then((module) => module.NotificationInbox), { loading: FeatureLoading });
 
@@ -50,7 +52,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 }
 
 const sectionIcons: Partial<Record<MobileSection, IconName>> = {
-  home: "home", schedule: "calendar", attendance: "clock", requests: "request", approvals: "approval", notifications: "bell", more: "menu", employees: "users", workplaces: "store"
+  home: "home", schedule: "calendar", attendance: "clock", requests: "request", approvals: "approval", payroll: "request", finance: "approval", notifications: "bell", more: "menu", employees: "users", workplaces: "store"
 };
 
 function EmployeeHome({ context, displayName, navigate }: { context: MobileRoleContext; displayName: string; navigate: (section: MobileSection) => void }) {
@@ -128,7 +130,7 @@ function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRole
   const secondary = items.filter((item) => !primarySectionOrder[context.role].includes(item.section) && item.section !== "home" && item.section !== "notifications");
   return <section className="more-menu">
     <article className="account-card"><span className="account-avatar">{isEmployee ? "직" : "관"}</span><div><strong>{roleLabels[context.role]}</strong><small>{context.organizationName}</small></div><span className="role-chip">{roleLabels[context.role]}</span></article>
-    {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 계정·소속·권한" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
+    {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 등록·정보·근태" : item.section === "payroll" ? "급여 초안·계약 이력" : item.section === "finance" ? "영수증 업로드·증빙 확인" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
     <div className="dashboard-section-heading"><h2>계정과 앱</h2></div>
     <PushSettingsCard isManager={!isEmployee} />
     <div className="dashboard-list">
@@ -233,6 +235,8 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
     attendance: isEmployee ? { eyebrow: activeContext.organizationName, title: "QR 출퇴근", description: "매장 QR로 오늘 출퇴근을 안전하게 기록해요." } : { eyebrow: "오늘 운영", title: "근태 현황", description: "직원별 출퇴근 상태와 예외를 확인해요." },
     requests: { eyebrow: "휴가·근무 변경", title: "요청", description: "잔여 연차와 요청 처리 상태를 확인해요." },
     approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가·스케줄·근태 정정 요청을 한곳에서 검토해요." },
+    payroll: { eyebrow: "계약과 저장 초안", title: "급여 관리", description: "급여 형태별 초안과 계약 이력을 확인하고 관리해요." },
+    finance: { eyebrow: "Google Drive 원본", title: "지출 증빙", description: "OCR 없이 영수증 원본과 URL을 안전하게 보관해요." },
     notifications: { eyebrow: "업무 변경 안내", title: "알림", description: "내가 확인해야 할 변화를 모아 보여드려요." },
     more: { eyebrow: "계정과 앱 설정", title: "전체", description: "보조 업무와 앱 설정을 관리해요." }
   };
@@ -253,6 +257,8 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
         : section === "schedule" && isEmployee ? <EmployeeSchedule context={activeContext} userContext={userContext} />
         : section === "schedule" ? <ManagerSchedule context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "employees" ? <ManagerEmployees context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
+        : section === "payroll" ? <ManagerPayroll context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
+        : section === "finance" ? <ManagerFinance context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "requests" && isEmployee ? <EmployeeLeave context={activeContext} userContext={userContext} />
         : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />

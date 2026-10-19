@@ -26,6 +26,15 @@ export function cameraErrorMessage(error: unknown) {
 export const androidQrCameraConstraints: MediaStreamConstraints = {
   audio: false,
   video: {
+    facingMode: { exact: "environment" },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+  },
+};
+
+export const preferredQrCameraConstraints: MediaStreamConstraints = {
+  audio: false,
+  video: {
     facingMode: { ideal: "environment" },
     width: { ideal: 1280 },
     height: { ideal: 720 },
@@ -124,7 +133,7 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
     };
     const startScanner = async () => {
       let lastError: unknown = null;
-      const candidates = [androidQrCameraConstraints, compatibleQrCameraConstraints];
+      const candidates = [androidQrCameraConstraints, preferredQrCameraConstraints, compatibleQrCameraConstraints];
       for (let index = 0; index < candidates.length && !cancelled; index += 1) {
         try {
           const controls = await reader.decodeFromConstraints(candidates[index], videoRef.current ?? undefined, decode);

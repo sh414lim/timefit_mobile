@@ -40,7 +40,7 @@ describe("mobile role contexts", () => {
     const contexts = deriveMobileContexts({ ...employee, isOrganizationOwner: true });
     expect(contexts.map((context) => context.role)).toContain("owner");
     const owner = contexts.find((context) => context.role === "owner")!;
-    expect(visibleNavigation(owner).map((item) => item.label)).toEqual(["운영 홈", "직원", "근태", "스케줄", "승인", "알림", "전체"]);
+    expect(visibleNavigation(owner).map((item) => item.label)).toEqual(["운영 홈", "직원", "근태", "스케줄", "승인", "급여", "지출 증빙", "알림", "전체"]);
     expect(canAccessSection(owner, "workplaces")).toBe(false);
   });
 
@@ -63,5 +63,10 @@ describe("mobile role contexts", () => {
     const owner = deriveMobileContexts({ ...employee, isOrganizationOwner: true }).find((context) => context.role === "owner")!;
     expect(primaryNavigation(manager).map((item) => item.section)).toEqual(["home", "attendance", "schedule", "approvals", "more"]);
     expect(primaryNavigation(owner).map((item) => item.section)).toEqual(["home", "attendance", "schedule", "approvals", "more"]);
+  });
+
+  it("shows payroll and finance only when delegated permissions allow them", () => {
+    const manager = deriveMobileContexts({ ...employee, managementAccount: { id: "manager", staff_id: "staff", role_code: "manager", status: "active", permissions: ["payroll.view", "expense.manage"], categoryScopes: [] } }).find((context) => context.role === "sub_manager")!;
+    expect(visibleNavigation(manager).map((item) => item.section)).toEqual(["home", "payroll", "finance", "notifications", "more"]);
   });
 });
