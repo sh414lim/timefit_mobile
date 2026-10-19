@@ -236,7 +236,7 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
     requests: { eyebrow: "휴가·근무 변경", title: "요청", description: "잔여 연차와 요청 처리 상태를 확인해요." },
     approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가·스케줄·근태 정정 요청을 한곳에서 검토해요." },
     payroll: { eyebrow: "계약과 저장 초안", title: "급여 관리", description: "급여 형태별 초안과 계약 이력을 확인하고 관리해요." },
-    finance: { eyebrow: "Google Drive 원본", title: "지출 증빙", description: "OCR 없이 영수증 원본과 URL을 안전하게 보관해요." },
+    finance: { eyebrow: "Drive 원본 + TimeFit AX", title: "지출 증빙", description: "영수증을 보관하고 품목·수량·가격까지 바로 확인해요." },
     notifications: { eyebrow: "업무 변경 안내", title: "알림", description: "내가 확인해야 할 변화를 모아 보여드려요." },
     more: { eyebrow: "계정과 앱 설정", title: "전체", description: "보조 업무와 앱 설정을 관리해요." }
   };
