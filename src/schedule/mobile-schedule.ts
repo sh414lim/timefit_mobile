@@ -84,7 +84,9 @@ export function scheduleMinutes(item: ScheduleItem): number | null {
   if (item.is_day_off || !item.starts_at || !item.ends_at) return null;
   const [startHour, startMinute] = item.starts_at.split(":").map(Number);
   const [endHour, endMinute] = item.ends_at.split(":").map(Number);
-  return Math.max(0, endHour * 60 + endMinute - startHour * 60 - startMinute - item.break_minutes);
+  let duration = endHour * 60 + endMinute - startHour * 60 - startMinute;
+  if (duration <= 0) duration += 24 * 60;
+  return Math.max(0, duration - item.break_minutes);
 }
 
 export function leaveConflictsWithSchedule(leave: LeaveItem, item: ScheduleItem): boolean {

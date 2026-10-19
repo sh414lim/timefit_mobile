@@ -1,7 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type ApprovalKind = "leave" | "schedule";
+export type ApprovalKind = "leave" | "schedule" | "attendance";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type ApprovalContext = {
+  leave_balance: { granted: number; used: number; pending: number } | null;
+  schedule: { work_date: string; starts_at: string | null; ends_at: string | null; shift_name: string | null; is_day_off: boolean }[] | null;
+  attendance: { work_date: string; checked_in_at: string | null; checked_out_at: string | null; status: string | null; requested_checked_in_at?: string | null; requested_checked_out_at?: string | null; updated_at?: string | null } | null;
+};
 export type ApprovalItem = {
   id: string;
   kind: ApprovalKind;
@@ -17,6 +22,7 @@ export type ApprovalItem = {
   review_comment: string | null;
   submitted_at: string;
   reviewed_at: string | null;
+  context: ApprovalContext;
 };
 export type ApprovalInbox = {
   timezone: string;
@@ -26,7 +32,7 @@ export type ApprovalInbox = {
 };
 
 export function approvalCacheKey(userId: string, organizationId: string) {
-  return `timefit:approvals:v1:${userId}:${organizationId}`;
+  return `timefit:approvals:v2:${userId}:${organizationId}`;
 }
 
 export async function loadApprovalInbox(client: SupabaseClient, organizationId: string): Promise<ApprovalInbox> {

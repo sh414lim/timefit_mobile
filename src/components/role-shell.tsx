@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { clearPrivateBrowserData } from "@/auth/session-storage";
 import type { UserContext } from "@/auth/user-context";
 import { NetworkBanner } from "@/components/network-banner";
-import { canAccessSection, deriveMobileContexts, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection, type NavigationItem } from "@/authorization/mobile-context";
+import { canAccessSection, deriveMobileContexts, primaryNavigation, primarySectionOrder, roleLabels, visibleNavigation, type MobileRoleContext, type MobileSection, type NavigationItem } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { loadNotifications } from "@/notifications/inbox";
 import { canEnablePush, enableSchedulePush } from "@/notifications/push";
 import { PushSettingsCard } from "@/components/push-settings-card";
+import { loadManagerHome, managerHomeCacheKey, mergeManagerHome, type ManagerHomeSection, type ManagerHomeSummary } from "@/dashboard/manager-home";
 
 const FeatureLoading = () => <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>화면을 준비하고 있어요</h2></section>;
 const EmployeeSchedule = dynamic(() => import("@/components/employee-schedule").then((module) => module.EmployeeSchedule), { loading: FeatureLoading });
 const EmployeeLeave = dynamic(() => import("@/components/employee-leave").then((module) => module.EmployeeLeave), { loading: FeatureLoading });
 const ManagerApprovals = dynamic(() => import("@/components/manager-approvals").then((module) => module.ManagerApprovals), { loading: FeatureLoading });
 const ManagerAttendance = dynamic(() => import("@/components/manager-attendance").then((module) => module.ManagerAttendance), { loading: FeatureLoading });
+const ManagerSchedule = dynamic(() => import("@/components/manager-schedule").then((module) => module.ManagerSchedule), { loading: FeatureLoading });
+const ManagerEmployees = dynamic(() => import("@/components/manager-employees").then((module) => module.ManagerEmployees), { loading: FeatureLoading });
 const EmployeeAttendance = dynamic(() => import("@/components/employee-attendance").then((module) => module.EmployeeAttendance), { loading: FeatureLoading });
 const NotificationInbox = dynamic(() => import("@/components/notification-inbox").then((module) => module.NotificationInbox), { loading: FeatureLoading });
 
@@ -50,17 +53,6 @@ const sectionIcons: Partial<Record<MobileSection, IconName>> = {
   home: "home", schedule: "calendar", attendance: "clock", requests: "request", approvals: "approval", notifications: "bell", more: "menu", employees: "users", workplaces: "store"
 };
 
-const primaryOrder: Record<MobileRoleContext["role"], MobileSection[]> = {
-  employee: ["home", "schedule", "attendance", "requests", "more"],
-  sub_manager: ["home", "attendance", "approvals", "notifications", "more"],
-  operations_lead: ["home", "attendance", "approvals", "notifications", "more"],
-  owner: ["home", "attendance", "approvals", "notifications", "more"]
-};
-
-function primaryNavigation(context: MobileRoleContext, items: NavigationItem[]) {
-  return primaryOrder[context.role].map((section) => items.find((item) => item.section === section)).filter((item): item is NavigationItem => Boolean(item));
-}
-
 function EmployeeHome({ context, displayName, navigate }: { context: MobileRoleContext; displayName: string; navigate: (section: MobileSection) => void }) {
   return <section className="dashboard-home">
     <article className="action-hero">
@@ -79,14 +71,53 @@ function EmployeeHome({ context, displayName, navigate }: { context: MobileRoleC
 function ManagerHome({ context, navigate }: { context: MobileRoleContext; navigate: (section: MobileSection) => void }) {
   const canReview = canAccessSection(context, "approvals");
   const canViewAttendance = canAccessSection(context, "attendance");
+  const canViewSchedule = canAccessSection(context, "schedule");
+  const cacheKey = managerHomeCacheKey(context);
+  const [summary, setSummary] = useState<ManagerHomeSummary | null>(null);
+  const summaryRef = useRef<ManagerHomeSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const summaryLabels: Record<ManagerHomeSection, string> = { attendance: "근태", approvals: "승인", staffing: "인력" };
+
+  async function refresh(background = false) {
+    if (background) setRefreshing(true); else setLoading(true);
+    try {
+      const next = mergeManagerHome(summaryRef.current, await loadManagerHome(getSupabaseBrowserClient(), context));
+      summaryRef.current = next;
+      setSummary(next);
+      window.sessionStorage.setItem(cacheKey, JSON.stringify(next));
+    } finally { setLoading(false); setRefreshing(false); }
+  }
+
+  useEffect(() => {
+    const cached = window.sessionStorage.getItem(cacheKey);
+    const timer = window.setTimeout(() => {
+      if (cached) try { const restored = JSON.parse(cached) as ManagerHomeSummary; summaryRef.current = restored; setSummary(restored); setLoading(false); } catch { window.sessionStorage.removeItem(cacheKey); }
+      void refresh(Boolean(cached));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  // The context-scoped cache key is the refresh boundary.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey]);
+
+  const attendanceIssueCount = (summary?.attendance?.counts.missing ?? 0) + (summary?.attendance?.rows.filter((row) => row.late).length ?? 0);
+  const shortageCount = summary?.staffing?.days.reduce((total, day) => total + day.shortages.reduce((dayTotal, item) => dayTotal + Math.max(0, item.required_count - item.scheduled_count), 0), 0) ?? 0;
+  const noData = summary && !summary.attendance && !summary.approvals && !summary.staffing;
+  if (loading && !summary) return <section className="schedule-state" aria-busy="true"><div className="spinner" /><h2>오늘 운영 현황을 불러오고 있어요</h2></section>;
+  if (noData) return <section className="schedule-state error"><span>연결 오류</span><h2>운영 현황을 불러오지 못했어요</h2><button className="primary-button" onClick={() => void refresh()}>다시 시도</button></section>;
   return <section className="dashboard-home">
+    <div className="manager-home-tools"><span>{summary?.serverTime ? `마지막 동기화 ${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", timeZone: summary.attendance?.timezone ?? summary.staffing?.timezone ?? summary.approvals?.timezone ?? "Asia/Seoul" }).format(new Date(summary.serverTime))}` : "동기화 정보 없음"}</span><button onClick={() => void refresh(true)} disabled={refreshing}>{refreshing ? "동기화 중…" : "새로고침"}</button></div>
+    {Boolean(summary?.failures.length) && <div className="manager-home-warning" role="status">{summary?.failures.map((section) => summaryLabels[section]).join("·")} 요약은 갱신하지 못했어요. 불러온 정보만 표시합니다.</div>}
     <div className="manager-summary">
-      {canViewAttendance && <button onClick={() => navigate("attendance")}><span>오늘 근태</span><strong>직원별 현황</strong><small>출근·퇴근·누락 확인</small></button>}
-      {canReview && <button onClick={() => navigate("approvals")}><span>승인 업무</span><strong>요청 검토</strong><small>휴가·근무 변경 처리</small></button>}
+      {summary?.attendance && <button className={attendanceIssueCount ? "danger" : ""} onClick={() => navigate("attendance")}><span>오늘 근태 이상</span><strong>{attendanceIssueCount}<small>건</small></strong><small>미출근 {summary.attendance.counts.missing} · 지각 {summary.attendance.rows.filter((row) => row.late).length}</small></button>}
+      {summary?.approvals && <button className={summary.approvals.counts.pending ? "warning" : ""} onClick={() => navigate("approvals")}><span>승인 대기</span><strong>{summary.approvals.counts.pending}<small>건</small></strong><small>휴가·스케줄·근태 요청</small></button>}
+      {summary?.attendance && <button onClick={() => navigate("attendance")}><span>현재 근태</span><strong>{summary.attendance.counts.working}<small>명 근무 중</small></strong><small>퇴근 완료 {summary.attendance.counts.completed}명</small></button>}
+      {summary?.staffing && <button className={shortageCount ? "danger" : ""} onClick={() => navigate("schedule")}><span>오늘·내일 인력</span><strong>{summary.staffing.configured ? `${shortageCount}명 부족` : "기준 미설정"}</strong><small>{summary.staffing.configured ? `예정 ${summary.staffing.days.reduce((total, day) => total + day.scheduled_count, 0)}명` : "관리자 웹에서 필요 인원을 설정해 주세요"}</small></button>}
     </div>
     <div className="dashboard-section-heading"><h2>우선 확인</h2><span>{context.organizationName}</span></div>
     <div className="dashboard-list">
       {canViewAttendance && <button onClick={() => navigate("attendance")}><span className="menu-icon red"><Icon name="alert" /></span><span><strong>근태 예외 확인</strong><small>지각·누락·장시간 근무를 먼저 확인해요</small></span><Icon name="chevron" /></button>}
+      {canViewSchedule && <button onClick={() => navigate("schedule")}><span className="menu-icon blue"><Icon name="calendar" /></span><span><strong>직원 스케줄</strong><small>근무 일정과 변경이 필요한 항목을 확인해요</small></span><Icon name="chevron" /></button>}
       {canReview && <button onClick={() => navigate("approvals")}><span className="menu-icon amber"><Icon name="approval" /></span><span><strong>승인 대기 요청</strong><small>직원 요청을 검토하고 결과를 알려요</small></span><Icon name="chevron" /></button>}
     </div>
   </section>;
@@ -94,10 +125,10 @@ function ManagerHome({ context, navigate }: { context: MobileRoleContext; naviga
 
 function MoreMenu({ context, items, onSignOut, navigate }: { context: MobileRoleContext; items: NavigationItem[]; onSignOut: () => Promise<void>; navigate: (section: MobileSection) => void }) {
   const isEmployee = context.role === "employee";
-  const secondary = items.filter((item) => !primaryOrder[context.role].includes(item.section) && item.section !== "home");
+  const secondary = items.filter((item) => !primarySectionOrder[context.role].includes(item.section) && item.section !== "home" && item.section !== "notifications");
   return <section className="more-menu">
     <article className="account-card"><span className="account-avatar">{isEmployee ? "직" : "관"}</span><div><strong>{roleLabels[context.role]}</strong><small>{context.organizationName}</small></div><span className="role-chip">{roleLabels[context.role]}</span></article>
-    {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 계정·소속·권한" : item.section === "schedule" ? "근무 일정 편성·변경" : item.section === "workplaces" ? "사업장과 QR 관리" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
+    {!isEmployee && secondary.length > 0 && <><div className="dashboard-section-heading"><h2>운영 관리</h2></div><div className="dashboard-list">{secondary.map((item) => <button key={item.section} onClick={() => navigate(item.section)}><span className="menu-icon blue"><Icon name={sectionIcons[item.section] ?? "settings"} /></span><span><strong>{item.label}</strong><small>{item.section === "employees" ? "직원 계정·소속·권한" : "운영 상세 메뉴"}</small></span><Icon name="chevron" /></button>)}</div></>}
     <div className="dashboard-section-heading"><h2>계정과 앱</h2></div>
     <PushSettingsCard isManager={!isEmployee} />
     <div className="dashboard-list">
@@ -197,10 +228,11 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
   const displayName = userContext.profile?.display_name ?? "TimeFit 사용자";
   const isEmployee = activeContext.role === "employee";
   const pageLabels: Partial<Record<MobileSection, { eyebrow: string; title: string; description: string }>> = {
-    schedule: { eyebrow: "내 근무 일정", title: "일정", description: "확정 일정과 변경 내역을 한눈에 확인해요." },
+    schedule: isEmployee ? { eyebrow: "내 근무 일정", title: "일정", description: "확정 일정과 변경 내역을 한눈에 확인해요." } : { eyebrow: "직원 근무 편성", title: "스케줄", description: "주간 일정과 충돌을 확인하고 직원 근무를 관리해요." },
+    employees: { eyebrow: "권한 범위 내 직원", title: "직원", description: "근태·일정·휴가를 한곳에서 확인하고 필요한 기록을 보정해요." },
     attendance: isEmployee ? { eyebrow: activeContext.organizationName, title: "QR 출퇴근", description: "매장 QR로 오늘 출퇴근을 안전하게 기록해요." } : { eyebrow: "오늘 운영", title: "근태 현황", description: "직원별 출퇴근 상태와 예외를 확인해요." },
     requests: { eyebrow: "휴가·근무 변경", title: "요청", description: "잔여 연차와 요청 처리 상태를 확인해요." },
-    approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가와 근무 변경 요청을 검토해요." },
+    approvals: { eyebrow: "처리가 필요한 요청", title: "승인", description: "휴가·스케줄·근태 정정 요청을 한곳에서 검토해요." },
     notifications: { eyebrow: "업무 변경 안내", title: "알림", description: "내가 확인해야 할 변화를 모아 보여드려요." },
     more: { eyebrow: "계정과 앱 설정", title: "전체", description: "보조 업무와 앱 설정을 관리해요." }
   };
@@ -219,16 +251,18 @@ export function RoleShell({ userContext, onRefreshAuthorization, onSignOut }: { 
       {section !== "home" && page && <div className="page-heading"><span>{page.eyebrow}</span><h1>{page.title}</h1><p>{page.description}</p></div>}
       {section === "home" ? (isEmployee ? <EmployeeHome context={activeContext} displayName={displayName} navigate={navigate} /> : <ManagerHome context={activeContext} navigate={navigate} />)
         : section === "schedule" && isEmployee ? <EmployeeSchedule context={activeContext} userContext={userContext} />
+        : section === "schedule" ? <ManagerSchedule context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
+        : section === "employees" ? <ManagerEmployees context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "requests" && isEmployee ? <EmployeeLeave context={activeContext} userContext={userContext} />
         : section === "approvals" ? <ManagerApprovals context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
         : section === "attendance" && isEmployee ? <EmployeeAttendance context={activeContext} />
-        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} onAuthorizationChanged={onRefreshAuthorization} />
+        : section === "attendance" ? <ManagerAttendance context={activeContext} userContext={userContext} onOpenStaff={(staffId,date) => navigate("employees", `/#employees?staff=${staffId}&date=${date}`)} />
         : section === "notifications" ? <NotificationInbox context={activeContext} onNavigate={navigate} onUnreadCountChange={setUnreadCount} />
         : section === "more" ? <MoreMenu context={activeContext} items={items} onSignOut={onSignOut} navigate={navigate} />
-        : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label}</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}
+        : <div className="placeholder-card"><strong>{items.find((item) => item.section === section)?.label} 기능을 준비하고 있어요</strong><p>웹 관리 데이터와 같은 권한 범위로 연결되는 보조 관리 화면입니다.</p></div>}
     </section>}
     <nav className={`bottom-nav ${isEmployee ? "employee-nav" : "manager-nav"}`} style={{ "--nav-items": primaryItems.length } as CSSProperties} aria-label="주요 메뉴">
-      {primaryItems.map((item) => { const selected = (section === item.section || (isEmployee && section === "notifications" && item.section === "more")) && !deniedSection; return <button key={item.section} className={`${selected ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={selected ? "page" : undefined}>
+      {primaryItems.map((item) => { const selected = (section === item.section || (section === "notifications" && item.section === "more")) && !deniedSection; return <button key={item.section} className={`${selected ? "active" : ""} ${item.section === "attendance" && isEmployee ? "qr-nav-item" : ""}`} onClick={() => navigate(item.section)} aria-current={selected ? "page" : undefined}>
         {item.section === "attendance" && isEmployee ? <span className="qr-nav-icon"><Icon name="scan" /></span> : <Icon name={sectionIcons[item.section] ?? "menu"} />}
         <span>{item.section === "attendance" && isEmployee ? "QR" : item.label}</span>
       </button>;})}

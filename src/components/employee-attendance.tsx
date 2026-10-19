@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileRoleContext } from "@/authorization/mobile-context";
 import { getSupabaseBrowserClient } from "@/auth/supabase";
 import { formatClock } from "@/attendance/manager-attendance";
-import { loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
+import { attendanceNeedsWorkdayRefresh, attendanceScanDisabled, loadTodayAttendance, qrAttendanceErrorMessage, qrTokenFromUrl, recordQrAttendance, type TodayAttendance } from "@/attendance/employee-qr";
 import { createQrDiagnosticEvent, qrDiagnosticsEnabled, type QrDiagnosticEvent, type QrDiagnosticStage } from "@/attendance/qr-diagnostics";
 import { QrCameraScanner } from "@/components/qr-camera-scanner";
 import { reportNetworkFailure, reportNetworkSuccess } from "@/network/connectivity";
 import { classifyRequestFailure, isAmbiguousWriteFailure, isBrowserOnline, withRequestTimeout } from "@/network/request-policy";
 import { useUpdateSafetyBlocker } from "@/pwa/update-safety";
+import { EmployeeCorrectionRequest } from "@/components/employee-correction-request";
 
 type Recovery = { token: string; requestKey: string };
 
@@ -17,6 +18,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
   const [state, setState] = useState<TodayAttendance | null>(null);
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingState, setLoadingState] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [message, setMessage] = useState("");
   const [recovery, setRecovery] = useState<Recovery | null>(null);
@@ -31,15 +33,20 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
   }, []);
 
   const refresh = useCallback(async () => {
+    setLoadingState(true);
     try {
       const next = await withRequestTimeout(loadTodayAttendance(getSupabaseBrowserClient(), context.organizationId));
-      setState(next); reportNetworkSuccess(next.serverTime);
+      setState(next);
+      setMessage((current) => current === "오늘 출퇴근 상태를 불러오지 못했어요. 인터넷 연결을 확인해 주세요." || current === "출퇴근 상태를 먼저 확인할게요." ? "" : current);
+      reportNetworkSuccess(next.serverTime);
       return next;
     } catch (error) {
       const failure = classifyRequestFailure(error, isBrowserOnline());
       if (isAmbiguousWriteFailure(failure)) reportNetworkFailure(failure === "offline" ? "offline" : "degraded"); else reportNetworkSuccess();
       setMessage("오늘 출퇴근 상태를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.");
       return null;
+    } finally {
+      setLoadingState(false);
     }
   }, [context.organizationId]);
 
@@ -52,12 +59,37 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       if (value) setToken(value);
       void refresh();
     }, 0);
-    return () => window.clearTimeout(timer);
+    const refreshWhenAvailable = () => void refresh();
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    window.addEventListener("online", refreshWhenAvailable);
+    window.addEventListener("focus", refreshWhenAvailable);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("online", refreshWhenAvailable);
+      window.removeEventListener("focus", refreshWhenAvailable);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [addDiagnostic, refresh]);
 
+  useEffect(() => {
+    if (!state?.workDate) return;
+    const refreshOnNewWorkday = () => {
+      if (attendanceNeedsWorkdayRefresh(state)) void refresh();
+    };
+    refreshOnNewWorkday();
+    const timer = window.setInterval(refreshOnNewWorkday, 30_000);
+    return () => window.clearInterval(timer);
+  }, [refresh, state]);
+
   const submit = useCallback(async (scannedValue?: string, retry?: Recovery) => {
-    if (busyRef.current || !state || state.nextAction === "completed" || state.nextAction === "review_required") {
+    if (busyRef.current || state?.nextAction === "completed" || state?.nextAction === "review_required") {
       if (diagnosticsEnabled) addDiagnostic("rpc_skipped", !state ? "attendance_state_unavailable" : `next=${state.nextAction}`);
+      return;
+    }
+    if (!state) {
+      setMessage("출퇴근 상태를 먼저 확인할게요.");
+      await refresh();
       return;
     }
     const rawToken = retry?.token ?? scannedValue ?? token;
@@ -84,7 +116,7 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
       if (diagnosticsEnabled) addDiagnostic("rpc_succeeded", `action=${result.action ?? result.nextAction}, duplicate=${Boolean(result.duplicate)}`);
       setState((current) => current ? { ...current, ...result } : result);
       reportNetworkSuccess(result.serverTime); setRecovery(null); requestKeyRef.current = crypto.randomUUID();
-      setMessage(result.action === "review_required" ? "이전 근무가 18시간을 초과해 관리자 확인이 필요해요." : result.duplicate ? `이미 처리된 ${result.action === "check_out" ? "퇴근" : "출근"} 기록을 확인했어요.` : result.action === "check_out" ? "퇴근 기록을 서버에 저장했어요." : "출근 기록을 서버에 저장했어요.");
+      setMessage(result.previousNeedsReview ? "오늘 출근을 저장했어요. 전날 미퇴근 기록은 관리자 확인 대상으로 남겼어요." : result.action === "review_required" ? "이전 근무가 18시간을 초과해 관리자 확인이 필요해요." : result.duplicate ? `이미 처리된 ${result.action === "check_out" ? "퇴근" : "출근"} 기록을 확인했어요.` : result.action === "check_out" ? "퇴근 기록을 서버에 저장했어요." : "출근 기록을 서버에 저장했어요.");
       window.history.replaceState(null, "", `${window.location.pathname}#attendance`);
       await refresh();
     } catch (error) {
@@ -102,13 +134,15 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
   }, [addDiagnostic, diagnosticsEnabled, refresh, state, token]);
 
   const handleScan = useCallback((value: string) => {
+    const normalizedToken = qrTokenFromUrl(value);
     setScanning(false);
-    setToken(value);
-    void submit(value);
+    setToken(normalizedToken);
+    void submit(normalizedToken);
   }, [submit]);
 
   const actionLabel = state?.nextAction === "check_out" ? "퇴근" : "출근";
-  const scanDisabled = busy || !state || state.nextAction === "completed" || state.nextAction === "review_required";
+  const scanDisabled = attendanceScanDisabled(state, busy, loadingState);
+  const cameraButtonLabel = busy ? "처리 중…" : loadingState ? "출퇴근 상태 확인 중…" : state?.nextAction === "completed" ? "오늘 출퇴근 완료" : state?.nextAction === "review_required" ? "관리자 확인 필요" : `QR 스캔으로 ${actionLabel}`;
   return <section className="employee-attendance">
     <div className="attendance-hero">
       <span>{state?.workDate ?? "오늘"}</span>
@@ -118,12 +152,14 @@ export function EmployeeAttendance({ context }: { context: MobileRoleContext }) 
     <div className="qr-entry">
       <span>{state?.workplaceName ?? context.organizationName} 업장 QR</span>
       <h3>카메라로 QR을 스캔해 주세요</h3>
-      <p className="qr-help">매장에 표시된 QR만 사용할 수 있으며, 스캔 후 서버 시각으로 즉시 기록됩니다.</p>
-      <button className="camera-button" disabled={scanDisabled} onClick={() => { setMessage(""); setScanning(true); }}><span aria-hidden="true">▣</span>{busy ? "처리 중…" : `QR 스캔으로 ${actionLabel}`}</button>
+      <p className="qr-help">매장에 표시된 QR을 인식하면 서버의 현재 시각으로 출근·퇴근이 즉시 기록됩니다.</p>
+      <button className="camera-button" disabled={scanDisabled} onClick={() => { setMessage(""); setScanning(true); }}><span aria-hidden="true">▣</span>{cameraButtonLabel}</button>
+      {!state && !loadingState && <button className="secondary-button attendance-retry" onClick={() => void refresh()}>출퇴근 상태 다시 불러오기</button>}
       <details className="manual-qr"><summary>카메라를 사용할 수 없나요?</summary><label htmlFor="manual-qr-value">QR 링크 또는 코드 직접 입력</label><input id="manual-qr-value" value={token} onChange={(event) => setToken(event.target.value)} placeholder="QR 링크 또는 코드"/><button className="secondary-button" disabled={scanDisabled} onClick={() => void submit()}>{`코드로 ${actionLabel}`}</button></details>
       {message && <p className="attendance-message" role="status" aria-live="polite">{message}</p>}
       {recovery && <div className="request-recovery" role="alert"><span>출퇴근 저장 여부를 다시 확인해야 해요.</span><button disabled={busy || !isBrowserOnline()} onClick={() => void submit(undefined, recovery)}>저장 여부 확인</button></div>}
     </div>
+    <EmployeeCorrectionRequest context={context} attendance={state}/>
     {diagnosticsEnabled && <section className="qr-diagnostics" aria-live="polite">
       <div><span>Android QR 진단</span><button type="button" onClick={() => setDiagnostics([])}>지우기</button></div>
       <p>이 화면에만 임시 표시되며 QR 값·계정정보는 기록하지 않습니다.</p>

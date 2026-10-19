@@ -9,7 +9,7 @@ describe("MOB-07 manager approvals", () => {
   });
 
   it("uses a user and organization scoped cache key", () => {
-    expect(approvalCacheKey("manager-1", "org-1")).toBe("timefit:approvals:v1:manager-1:org-1");
+    expect(approvalCacheKey("manager-1", "org-1")).toBe("timefit:approvals:v2:manager-1:org-1");
   });
 
   it("loads the approval inbox contract", async () => {
@@ -24,5 +24,12 @@ describe("MOB-07 manager approvals", () => {
     const item = { id: "request-1", kind: "leave" } as ApprovalItem;
     await reviewApproval({ rpc } as never, "org-1", item, "approved", "확인", "key-1");
     expect(rpc).toHaveBeenCalledWith("timefit_user_mobile_review_approval", expect.objectContaining({ p_organization_id: "org-1", p_kind: "leave", p_request_id: "request-1", p_request_key: "key-1" }));
+  });
+
+  it("reviews attendance corrections through the unified RPC", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { duplicate: false }, error: null });
+    const item = { id: "correction-1", kind: "attendance" } as ApprovalItem;
+    await reviewApproval({ rpc } as never, "org-1", item, "rejected", "기록 불일치", "key-2");
+    expect(rpc).toHaveBeenCalledWith("timefit_user_mobile_review_approval", expect.objectContaining({ p_kind: "attendance", p_comment: "기록 불일치" }));
   });
 });

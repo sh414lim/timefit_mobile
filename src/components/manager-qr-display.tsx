@@ -72,7 +72,7 @@ export function ManagerQrDisplay({ organizationId, organizationName, onAuthoriza
   return <section className="manager-qr-panel" aria-live="polite">
     <div className="manager-qr-heading"><div><span>실시간 업장 QR</span><h2>{payload?.organizationName || organizationName} 출퇴근</h2></div><button type="button" onClick={() => void close()} aria-label="QR 표시 닫기">×</button></div>
     {image ? <div className="manager-qr-code"><Image src={image} width={560} height={560} unoptimized alt={`${organizationName} 출퇴근 QR`} priority /></div> : <div className="manager-qr-loading"><span className="spinner" /><strong>보안 QR을 준비하고 있어요</strong></div>}
-    <div className="manager-qr-instructions"><strong>직원 개인 휴대전화로 스캔해 주세요</strong><p>로그인한 직원의 버터빌라 소속을 서버에서 확인합니다. 첫 스캔은 출근, 열린 근무가 있으면 퇴근으로 자동 처리돼요.</p>{payload && <span className={secondsLeft <= 15 ? "ending" : ""}>자동 갱신까지 {Math.min(secondsLeft, payload.rotateAfterSeconds)}초</span>}</div>
+    <div className="manager-qr-instructions"><strong>직원 개인 휴대전화로 스캔해 주세요</strong><p>로그인한 직원의 버터빌라 소속을 서버에서 확인합니다. QR 인식 후 직원이 출근·퇴근을 최종 확인합니다.</p>{payload && <span className={secondsLeft <= 15 ? "ending" : ""}>자동 갱신까지 {Math.min(secondsLeft, payload.rotateAfterSeconds)}초</span>}</div>
     {error && <p className="manager-qr-error" role="alert">{error}</p>}
     <div className="manager-qr-actions"><button type="button" className="secondary-button" onClick={() => void rotate()} disabled={!payload}>지금 새 QR 발급</button><button type="button" className="text-button" onClick={() => void close()}>표시 종료</button></div>
   </section>;
