@@ -27,10 +27,14 @@ export const androidQrCameraConstraints: MediaStreamConstraints = {
   audio: false,
   video: {
     facingMode: { ideal: "environment" },
-    width: { ideal: 1920, min: 1280 },
-    height: { ideal: 1080, min: 720 },
-    aspectRatio: { ideal: 16 / 9 },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
   },
+};
+
+export const compatibleQrCameraConstraints: MediaStreamConstraints = {
+  audio: false,
+  video: true,
 };
 
 export const qrDecodeHints = new Map<DecodeHintType, unknown>([
@@ -52,17 +56,6 @@ function createNativeQrDetector() {
   }
 }
 
-async function improveAndroidFocus(video: HTMLVideoElement | null) {
-  const stream = video?.srcObject;
-  if (!(stream instanceof MediaStream)) return false;
-  const track = stream.getVideoTracks()[0];
-  if (!track) return false;
-  const capabilities = track.getCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
-  if (!capabilities.focusMode?.includes("continuous")) return false;
-  await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] });
-  return true;
-}
-
 function cameraStreamDetail(video: HTMLVideoElement | null) {
   const stream = video?.srcObject;
   if (!(stream instanceof MediaStream)) return "stream=unavailable";
@@ -74,6 +67,20 @@ function safeErrorName(error: unknown) {
   return String((error as { name?: string }).name || "UnknownError").slice(0, 80);
 }
 
+export async function waitForCameraPreview(video: HTMLVideoElement | null, timeoutMs = 4000) {
+  if (!video) return false;
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < timeoutMs) {
+    const stream = video.srcObject;
+    const track = stream instanceof MediaStream ? stream.getVideoTracks()[0] : null;
+    if (track?.readyState === "live" && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+      return true;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  return false;
+}
+
 export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -82,6 +89,7 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
   const reportedZxingErrorRef = useRef(false);
   const [error, setError] = useState("");
   const [needsHelp, setNeedsHelp] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,65 +110,82 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
       delayBetweenScanSuccess: 800,
     });
     const helpTimer = window.setTimeout(() => setNeedsHelp(true), 8000);
-    void reader.decodeFromConstraints(
-      androidQrCameraConstraints,
-      videoRef.current ?? undefined,
-      (result, error) => {
-        if (error && safeErrorName(error) !== "NotFoundException" && !reportedZxingErrorRef.current) {
-          reportedZxingErrorRef.current = true;
-          onDiagnostic?.("zxing_decoder_error", safeErrorName(error));
-        }
-        if (!result || handledRef.current || cancelled) return;
-        handledRef.current = true;
-        onDiagnostic?.("qr_detected_zxing", `length=${result.getText().length}`);
-        window.clearTimeout(helpTimer);
-        controlsRef.current?.stop();
-        onScan(result.getText());
-      },
-    ).then((controls) => {
-      if (cancelled) controls.stop();
-      else {
-        controlsRef.current = controls;
-        onDiagnostic?.("camera_stream_started", cameraStreamDetail(videoRef.current));
-        void improveAndroidFocus(videoRef.current)
-          .then((applied) => onDiagnostic?.(applied ? "focus_continuous" : "focus_unavailable"))
-          .catch(() => onDiagnostic?.("focus_unavailable", "ConstraintError"));
-        const detector = createNativeQrDetector();
-        onDiagnostic?.(detector ? "native_detector_available" : "native_detector_unavailable");
-        const scanWithNativeDetector = async () => {
-          const video = videoRef.current;
-          if (!detector || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || nativeScanRunning || handledRef.current || cancelled) return;
-          nativeScanRunning = true;
-          try {
-            const detected = await detector.detect(video);
-            const value = detected.find((item) => item.rawValue?.trim())?.rawValue?.trim();
-            if (!value || handledRef.current || cancelled) return;
-            handledRef.current = true;
-            onDiagnostic?.("qr_detected_native", `length=${value.length}`);
-            window.clearTimeout(helpTimer);
-            controlsRef.current?.stop();
-            onScan(value);
-          } catch (error) {
-            // Android 기기별 BarcodeDetector 편차가 있어 ZXing 경로를 계속 유지한다.
-            if (!reportedNativeErrorRef.current) {
-              reportedNativeErrorRef.current = true;
-              onDiagnostic?.("native_detector_error", safeErrorName(error));
-            }
-          } finally {
-            nativeScanRunning = false;
+    const decode = (result: Parameters<Parameters<typeof reader.decodeFromConstraints>[2]>[0], error: Parameters<Parameters<typeof reader.decodeFromConstraints>[2]>[1]) => {
+      if (error && safeErrorName(error) !== "NotFoundException" && !reportedZxingErrorRef.current) {
+        reportedZxingErrorRef.current = true;
+        onDiagnostic?.("zxing_decoder_error", safeErrorName(error));
+      }
+      if (!result || handledRef.current || cancelled) return;
+      handledRef.current = true;
+      onDiagnostic?.("qr_detected_zxing", `length=${result.getText().length}`);
+      window.clearTimeout(helpTimer);
+      controlsRef.current?.stop();
+      onScan(result.getText());
+    };
+    const startScanner = async () => {
+      let lastError: unknown = null;
+      const candidates = [androidQrCameraConstraints, compatibleQrCameraConstraints];
+      for (let index = 0; index < candidates.length && !cancelled; index += 1) {
+        try {
+          const controls = await reader.decodeFromConstraints(candidates[index], videoRef.current ?? undefined, decode);
+          if (cancelled) {
+            controls.stop();
+            return;
           }
-        };
-        if (detector) {
-          void scanWithNativeDetector();
-          nativeScanTimer = window.setInterval(() => void scanWithNativeDetector(), 180);
+          controlsRef.current = controls;
+          const hasPreview = await waitForCameraPreview(videoRef.current);
+          if (!hasPreview && !handledRef.current) {
+            onDiagnostic?.("camera_error", `PreviewTimeout, profile=${index + 1}`);
+            controls.stop();
+            controlsRef.current = null;
+            if (videoRef.current) videoRef.current.srcObject = null;
+            continue;
+          }
+          setPreviewReady(true);
+          onDiagnostic?.("camera_stream_started", cameraStreamDetail(videoRef.current));
+          const detector = createNativeQrDetector();
+          onDiagnostic?.(detector ? "native_detector_available" : "native_detector_unavailable");
+          const scanWithNativeDetector = async () => {
+            const video = videoRef.current;
+            if (!detector || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || nativeScanRunning || handledRef.current || cancelled) return;
+            nativeScanRunning = true;
+            try {
+              const detected = await detector.detect(video);
+              const value = detected.find((item) => item.rawValue?.trim())?.rawValue?.trim();
+              if (!value || handledRef.current || cancelled) return;
+              handledRef.current = true;
+              onDiagnostic?.("qr_detected_native", `length=${value.length}`);
+              window.clearTimeout(helpTimer);
+              controlsRef.current?.stop();
+              onScan(value);
+            } catch (error) {
+              // Android 기기별 BarcodeDetector 편차가 있어 ZXing 경로를 계속 유지한다.
+              if (!reportedNativeErrorRef.current) {
+                reportedNativeErrorRef.current = true;
+                onDiagnostic?.("native_detector_error", safeErrorName(error));
+              }
+            } finally {
+              nativeScanRunning = false;
+            }
+          };
+          if (detector) {
+            void scanWithNativeDetector();
+            nativeScanTimer = window.setInterval(() => void scanWithNativeDetector(), 180);
+          }
+          return;
+        } catch (reason) {
+          lastError = reason;
+          onDiagnostic?.("camera_error", `${safeErrorName(reason)}, profile=${index + 1}`);
+          controlsRef.current?.stop();
+          controlsRef.current = null;
+          if (videoRef.current) videoRef.current.srcObject = null;
         }
       }
-    }).catch((reason: unknown) => {
       if (!cancelled) {
-        onDiagnostic?.("camera_error", safeErrorName(reason));
-        setError(cameraErrorMessage(reason));
+        setError(lastError ? cameraErrorMessage(lastError) : "카메라 영상이 표시되지 않아요. 앱을 완전히 종료한 뒤 다시 실행하거나 QR 코드를 직접 입력해 주세요.");
       }
-    });
+    };
+    void startScanner();
 
     return () => {
       cancelled = true;
@@ -177,7 +202,8 @@ export function QrCameraScanner({ busy, onCancel, onDiagnostic, onScan }: QrCame
       <button type="button" className="camera-close" onClick={onCancel} aria-label="카메라 닫기">×</button>
     </div>
     <div className="camera-preview">
-      <video ref={videoRef} muted playsInline autoPlay aria-label="QR 스캔 카메라 화면" />
+      <video ref={videoRef} muted playsInline autoPlay disablePictureInPicture aria-label="QR 스캔 카메라 화면" />
+      {!previewReady && !error && <div className="camera-preview-loading" role="status"><span/><strong>카메라 화면을 준비하고 있어요</strong></div>}
       {!error && <><div className="camera-frame" aria-hidden="true"/><p>QR을 인식하면 서버 시각으로 즉시 기록합니다.</p></>}
       {needsHelp && !error && !busy && <div className="camera-scan-help" role="status"><strong>QR이 잘 보이지 않아요</strong><span>QR 전체가 네모 안에 들어오도록 20~30cm 떨어지고, 화면 반사를 피해주세요.</span></div>}
       {error && <div className="camera-error" role="alert"><strong>카메라를 사용할 수 없어요</strong><p>{error}</p><button type="button" className="secondary-button" onClick={onCancel}>직접 입력하기</button></div>}
